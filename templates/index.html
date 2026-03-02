@@ -1,0 +1,1377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>全渠道基金管理系统</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .drop-active { border-color: #6366f1 !important; background-color: #eef2ff !important; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif; }
+    .ai-content h1 { font-size: 1.25rem; font-weight: 700; margin: 1.2rem 0 0.5rem; color: #1f2937; }
+    .ai-content h2 { font-size: 1.1rem; font-weight: 700; margin: 1rem 0 0.4rem; color: #374151; }
+    .ai-content h3 { font-size: 1rem; font-weight: 600; margin: 0.8rem 0 0.3rem; color: #4b5563; }
+    .ai-content p { margin: 0.4rem 0; line-height: 1.7; color: #374151; }
+    .ai-content ul, .ai-content ol { margin: 0.3rem 0 0.3rem 1.5rem; color: #374151; }
+    .ai-content li { margin: 0.2rem 0; line-height: 1.6; }
+    .ai-content strong { color: #111827; }
+    .ai-content table { width: 100%; border-collapse: collapse; margin: 0.6rem 0; font-size: 0.85rem; }
+    .ai-content th { background: #f9fafb; padding: 0.4rem 0.6rem; border: 1px solid #e5e7eb; font-weight: 600; text-align: left; }
+    .ai-content td { padding: 0.4rem 0.6rem; border: 1px solid #e5e7eb; }
+    .ai-content blockquote { border-left: 3px solid #6366f1; padding-left: 0.8rem; margin: 0.5rem 0; color: #6b7280; }
+    .ai-content code { background: #f3f4f6; padding: 0.1rem 0.3rem; border-radius: 0.25rem; font-size: 0.85em; }
+    .ai-content hr { margin: 1rem 0; border-color: #e5e7eb; }
+  </style>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: { brand: { 50:'#eef2ff',100:'#e0e7ff',500:'#6366f1',600:'#4f46e5',700:'#4338ca',800:'#3730a3' } }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-gray-50 min-h-screen" x-data="app()" x-cloak>
+
+  <!-- ============ Top Navigation ============ -->
+  <nav class="bg-brand-700 shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-14">
+        <div class="flex items-center gap-2">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"/></svg>
+          <span class="text-white font-semibold text-lg tracking-wide">全渠道基金管理</span>
+        </div>
+        <div class="flex gap-1">
+          <template x-for="t in tabs" :key="t.id">
+            <button @click="switchTab(t.id)"
+              :class="tab === t.id ? 'bg-white/20 text-white' : 'text-white/70 hover:text-white hover:bg-white/10'"
+              class="px-4 py-2 rounded-lg text-sm font-medium transition-all">
+              <span x-text="t.label"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ============ Main Content ============ -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- ========== Dashboard Tab ========== -->
+    <div x-show="tab === 'dashboard'" x-transition>
+      <!-- Summary Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+          <p class="text-xs text-gray-500 mb-1">持有基金</p>
+          <p class="text-2xl font-bold text-gray-900" x-text="filteredStats.count || 0"></p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+          <p class="text-xs text-gray-500 mb-1">总投入成本</p>
+          <p class="text-2xl font-bold text-gray-900" x-text="formatMoney(filteredStats.cost)"></p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+          <p class="text-xs text-gray-500 mb-1">当前总市值</p>
+          <p class="text-2xl font-bold text-gray-900" x-text="formatMoney(filteredStats.market)"></p>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+          <p class="text-xs text-gray-500 mb-1">总收益</p>
+          <p class="text-2xl font-bold" :class="profitColor(filteredStats.profit)">
+            <span x-text="formatProfit(filteredStats.profit)"></span>
+            <span class="text-sm font-normal ml-1" x-text="'(' + formatRate(filteredStats.rate) + ')'"></span>
+          </p>
+        </div>
+      </div>
+
+      <!-- Channel Stats -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" x-show="channelStatsItems.length > 1">
+        <template x-for="cs in channelStatsItems" :key="cs.name">
+          <button @click="channelFilter = channelFilter === cs.name ? '' : cs.name"
+            :class="channelFilter === cs.name ? 'ring-2 ring-brand-500 border-brand-300' : 'border-gray-100 hover:border-gray-200'"
+            class="bg-white rounded-xl shadow-sm p-4 border text-left transition-all">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-medium text-gray-600" x-text="cs.name"></span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500" x-text="cs.count + '只'"></span>
+            </div>
+            <p class="text-lg font-bold text-gray-900" x-text="formatMoney(cs.market)"></p>
+            <p class="text-xs mt-0.5" :class="profitColor(cs.profit)">
+              <span x-text="formatProfit(cs.profit)"></span>
+              <span class="text-gray-400 mx-0.5">|</span>
+              <span x-text="formatRate(cs.rate)"></span>
+            </p>
+          </button>
+        </template>
+      </div>
+
+      <!-- Holdings Table -->
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+          <div class="flex items-center gap-3">
+            <h2 class="text-base font-semibold text-gray-800">持仓明细</h2>
+            <div class="flex gap-1" x-show="channelStatsItems.length > 1">
+              <button @click="channelFilter = ''"
+                :class="channelFilter === '' ? 'bg-brand-600 text-white' : 'text-gray-500 hover:bg-gray-100'"
+                class="px-2.5 py-1 text-xs rounded-md transition">全部</button>
+              <template x-for="cs in channelStatsItems" :key="cs.name">
+                <button @click="channelFilter = cs.name"
+                  :class="channelFilter === cs.name ? 'bg-brand-600 text-white' : 'text-gray-500 hover:bg-gray-100'"
+                  class="px-2.5 py-1 text-xs rounded-md transition" x-text="cs.name"></button>
+              </template>
+            </div>
+            <div class="flex gap-1 flex-wrap" x-show="industryStatsItems.length > 1">
+              <span class="text-[10px] text-gray-400 leading-6">行业:</span>
+              <button @click="industryFilter = ''"
+                :class="industryFilter === '' ? 'bg-purple-600 text-white' : 'text-gray-500 hover:bg-gray-100'"
+                class="px-2 py-0.5 text-[11px] rounded-md transition">全部</button>
+              <template x-for="is in industryStatsItems" :key="is.name">
+                <button @click="industryFilter = is.name"
+                  :class="industryFilter === is.name ? 'bg-purple-600 text-white' : 'text-gray-500 hover:bg-gray-100'"
+                  class="px-2 py-0.5 text-[11px] rounded-md transition" x-text="is.name + '(' + is.count + ')'"></button>
+              </template>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <button @click="downloadHoldings()" x-show="summary.holdings && summary.holdings.length"
+              class="text-sm text-brand-600 hover:text-brand-800 transition flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+              下载
+            </button>
+            <button @click="syncAllNav()" :disabled="syncAllLoading"
+              class="text-sm text-brand-600 hover:text-brand-800 disabled:opacity-40 transition flex items-center gap-1">
+              <svg x-show="syncAllLoading" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+              <span x-text="syncAllLoading ? syncAllProgress : '同步全部净值'"></span>
+            </button>
+            <button @click="deleteAllHoldings()" x-show="summary.holdings && summary.holdings.length"
+              class="text-sm text-red-500 hover:text-red-700 transition">一键清空</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm" x-show="summary.holdings && summary.holdings.length">
+            <thead class="bg-gray-50 text-gray-500 text-xs tracking-wider">
+              <tr>
+                <th class="px-5 py-3 text-left">渠道</th>
+                <th class="px-5 py-3 text-left">基金代码</th>
+                <th class="px-5 py-3 text-left">基金名称</th>
+                <th class="px-5 py-3 text-left cursor-pointer select-none hover:text-gray-800 transition" @click="toggleSort('industry')">
+                  行业 <span x-show="sortKey==='industry'" x-text="sortAsc ? '↑' : '↓'" class="text-brand-600"></span>
+                </th>
+                <th class="px-5 py-3 text-right cursor-pointer select-none hover:text-gray-800 transition" @click="toggleSort('shares')">
+                  持有份额 <span x-show="sortKey==='shares'" x-text="sortAsc ? '↑' : '↓'" class="text-brand-600"></span>
+                </th>
+                <th class="px-5 py-3 text-right cursor-pointer select-none hover:text-gray-800 transition" @click="toggleSort('cost_amount')">
+                  持仓成本 <span x-show="sortKey==='cost_amount'" x-text="sortAsc ? '↑' : '↓'" class="text-brand-600"></span>
+                </th>
+                <th class="px-5 py-3 text-right cursor-pointer select-none hover:text-gray-800 transition" @click="toggleSort('latest_nav')">
+                  最新净值 <span x-show="sortKey==='latest_nav'" x-text="sortAsc ? '↑' : '↓'" class="text-brand-600"></span>
+                </th>
+                <th class="px-5 py-3 text-right cursor-pointer select-none hover:text-gray-800 transition" @click="toggleSort('market_value')">
+                  市值 <span x-show="sortKey==='market_value'" x-text="sortAsc ? '↑' : '↓'" class="text-brand-600"></span>
+                </th>
+                <th class="px-5 py-3 text-right cursor-pointer select-none hover:text-gray-800 transition" @click="toggleSort('profit')">
+                  盈亏 <span x-show="sortKey==='profit'" x-text="sortAsc ? '↑' : '↓'" class="text-brand-600"></span>
+                </th>
+                <th class="px-5 py-3 text-right cursor-pointer select-none hover:text-gray-800 transition" @click="toggleSort('profit_rate')">
+                  收益率 <span x-show="sortKey==='profit_rate'" x-text="sortAsc ? '↑' : '↓'" class="text-brand-600"></span>
+                </th>
+                <th class="px-5 py-3 text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+              <template x-for="h in sortedHoldings" :key="h.fund_code + h.channel_name">
+                <tr class="hover:bg-gray-50/50 transition">
+                  <td class="px-5 py-3">
+                    <span class="inline-block px-2 py-0.5 text-xs rounded-full bg-brand-50 text-brand-700" x-text="h.channel_name"></span>
+                  </td>
+                  <td class="px-5 py-3 font-mono text-gray-600" x-text="h.fund_code"></td>
+                  <td class="px-5 py-3 font-medium text-gray-900" x-text="h.fund_name"></td>
+                  <td class="px-5 py-3">
+                    <span class="inline-block px-2 py-0.5 text-xs rounded-full bg-purple-50 text-purple-700" x-text="h.industry || '其他'"></span>
+                  </td>
+                  <td class="px-5 py-3 text-right text-gray-700" x-text="h.shares?.toFixed(2) || '-'"></td>
+                  <td class="px-5 py-3 text-right text-gray-700" x-text="formatMoney(h.cost_amount)"></td>
+                  <td class="px-5 py-3 text-right text-gray-700">
+                    <span x-text="h.latest_nav?.toFixed(4) || '-'"></span>
+                    <span x-show="h.latest_nav_date" class="block text-[10px] text-gray-400" x-text="h.latest_nav_date"></span>
+                  </td>
+                  <td class="px-5 py-3 text-right font-medium text-gray-900" x-text="formatMoney(h.market_value)"></td>
+                  <td class="px-5 py-3 text-right font-medium" :class="profitColor(h.profit)" x-text="formatProfit(h.profit)"></td>
+                  <td class="px-5 py-3 text-right font-medium" :class="profitColor(h.profit_rate)" x-text="formatRate(h.profit_rate)"></td>
+                  <td class="px-5 py-3 text-center space-x-2">
+                    <button @click="syncNav(h.fund_code)" class="text-xs text-brand-600 hover:text-brand-800 transition">同步净值</button>
+                    <button @click="deleteHolding(h.holding_id, h.fund_name)" class="text-xs text-red-500 hover:text-red-700 transition">删除</button>
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div x-show="!summary.holdings || !summary.holdings.length" class="py-16 text-center text-gray-400">
+            <svg class="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z"/></svg>
+            <p>暂无持仓数据</p>
+            <p class="text-sm mt-1">通过「截图导入」或「手动录入」添加交易</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== Analysis Tab ========== -->
+    <div x-show="tab === 'analysis'" x-transition>
+      <div x-show="!summary.holdings || !summary.holdings.length" class="bg-white rounded-xl shadow-sm border border-gray-100 py-16 text-center text-gray-400">
+        <p>暂无持仓数据，请先导入持仓</p>
+      </div>
+      <div x-show="summary.holdings && summary.holdings.length">
+
+        <!-- ───── Section: Key Metrics ───── -->
+        <div class="mb-8">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+              <div class="w-1 h-4 rounded-full bg-indigo-500"></div>
+              <h2 class="text-sm font-semibold text-gray-700 tracking-wide">关键指标</h2>
+            </div>
+            <button @click="syncIndustries()" :disabled="syncIndustryLoading"
+              class="text-xs text-gray-400 hover:text-indigo-600 disabled:opacity-40 transition flex items-center gap-1">
+              <svg x-show="syncIndustryLoading" class="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+              <span x-text="syncIndustryLoading ? '同步中...' : '同步行业分类'"></span>
+            </button>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow group">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-7 h-7 rounded-lg bg-blue-50 flex items-center justify-center">
+                  <svg class="w-3.5 h-3.5 text-blue-500" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941"/></svg>
+                </div>
+                <p class="text-[11px] text-gray-400">最大持仓</p>
+              </div>
+              <p class="text-sm font-bold text-gray-900 truncate" x-text="analysisMetrics.largest?.fund_name || '-'"></p>
+              <p class="text-xs text-gray-500 mt-0.5" x-text="analysisMetrics.largest ? formatMoney(analysisMetrics.largest.market_value) : '-'"></p>
+            </div>
+            <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-7 h-7 rounded-lg bg-red-50 flex items-center justify-center">
+                  <svg class="w-3.5 h-3.5 text-red-500" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 10.5L12 3m0 0l7.5 7.5M12 3v18"/></svg>
+                </div>
+                <p class="text-[11px] text-gray-400">最高收益率</p>
+              </div>
+              <p class="text-sm font-bold text-red-600 truncate" x-text="analysisMetrics.bestRate?.fund_name || '-'"></p>
+              <p class="text-xs text-red-500 mt-0.5" x-text="analysisMetrics.bestRate ? formatRate(analysisMetrics.bestRate.profit_rate) : '-'"></p>
+            </div>
+            <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-7 h-7 rounded-lg bg-emerald-50 flex items-center justify-center">
+                  <svg class="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 13.5L12 21m0 0l-7.5-7.5M12 21V3"/></svg>
+                </div>
+                <p class="text-[11px] text-gray-400">最低收益率</p>
+              </div>
+              <p class="text-sm font-bold text-green-600 truncate" x-text="analysisMetrics.worstRate?.fund_name || '-'"></p>
+              <p class="text-xs text-green-500 mt-0.5" x-text="analysisMetrics.worstRate ? formatRate(analysisMetrics.worstRate.profit_rate) : '-'"></p>
+            </div>
+            <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-7 h-7 rounded-lg bg-orange-50 flex items-center justify-center">
+                  <svg class="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </div>
+                <p class="text-[11px] text-gray-400">最大盈利</p>
+              </div>
+              <p class="text-sm font-bold text-red-600 truncate" x-text="analysisMetrics.bestProfit?.fund_name || '-'"></p>
+              <p class="text-xs text-red-500 mt-0.5" x-text="analysisMetrics.bestProfit ? formatProfit(analysisMetrics.bestProfit.profit) : '-'"></p>
+            </div>
+            <div class="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+              <div class="flex items-center gap-2 mb-2">
+                <div class="w-7 h-7 rounded-lg bg-gray-50 flex items-center justify-center">
+                  <svg class="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z"/></svg>
+                </div>
+                <p class="text-[11px] text-gray-400">最大亏损</p>
+              </div>
+              <p class="text-sm font-bold text-green-600 truncate" x-text="analysisMetrics.worstProfit?.fund_name || '-'"></p>
+              <p class="text-xs text-green-500 mt-0.5" x-text="analysisMetrics.worstProfit ? formatProfit(analysisMetrics.worstProfit.profit) : '-'"></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- ───── Section: Distribution ───── -->
+        <div class="mb-8">
+          <div class="flex items-center gap-2 mb-4">
+            <div class="w-1 h-4 rounded-full bg-violet-500"></div>
+            <h2 class="text-sm font-semibold text-gray-700 tracking-wide">分布概览</h2>
+          </div>
+          <div class="grid md:grid-cols-3 gap-5">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h3 class="text-xs font-medium text-gray-500 mb-3 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-violet-400 inline-block"></span> 渠道分布
+              </h3>
+              <div class="relative" style="height: 240px;">
+                <canvas id="chartChannel"></canvas>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h3 class="text-xs font-medium text-gray-500 mb-3 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-amber-400 inline-block"></span> 行业分布
+              </h3>
+              <div class="relative" style="height: 240px;">
+                <canvas id="chartIndustry"></canvas>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h3 class="text-xs font-medium text-gray-500 mb-3 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-cyan-400 inline-block"></span> 持仓占比
+              </h3>
+              <div class="relative" style="height: 240px;">
+                <canvas id="chartAllocation"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ───── Section: Performance ───── -->
+        <div class="mb-8">
+          <div class="flex items-center gap-2 mb-4">
+            <div class="w-1 h-4 rounded-full bg-rose-500"></div>
+            <h2 class="text-sm font-semibold text-gray-700 tracking-wide">收益表现</h2>
+          </div>
+          <div class="grid md:grid-cols-2 gap-5 mb-5">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h3 class="text-xs font-medium text-gray-500 mb-3">行业盈亏</h3>
+              <div class="relative" style="min-height: 260px;" :style="'height:' + Math.max(260, industryStatsItems.length * 34) + 'px'">
+                <canvas id="chartIndustryProfit"></canvas>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h3 class="text-xs font-medium text-gray-500 mb-3">收益率排行</h3>
+              <div class="relative" style="min-height: 260px;" :style="'height:' + Math.max(260, (summary.holdings||[]).length * 34) + 'px'">
+                <canvas id="chartRate"></canvas>
+              </div>
+            </div>
+          </div>
+          <div class="grid md:grid-cols-2 gap-5">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h3 class="text-xs font-medium text-gray-500 mb-3">盈亏金额排行</h3>
+              <div class="relative" style="min-height: 260px;" :style="'height:' + Math.max(260, (summary.holdings||[]).length * 34) + 'px'">
+                <canvas id="chartProfit"></canvas>
+              </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+              <h3 class="text-xs font-medium text-gray-500 mb-3">成本 vs 市值</h3>
+              <div class="relative" style="min-height: 260px;" :style="'height:' + Math.max(260, (summary.holdings||[]).length * 38) + 'px'">
+                <canvas id="chartCostMarket"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ───── Section: AI Analysis ───── -->
+        <div class="mb-4">
+          <div class="flex items-center gap-2 mb-4">
+            <div class="w-1 h-4 rounded-full bg-gradient-to-b from-indigo-500 to-purple-500"></div>
+            <h2 class="text-sm font-semibold text-gray-700 tracking-wide">AI 智能解读</h2>
+          </div>
+          <div class="rounded-xl border border-indigo-100 bg-gradient-to-br from-white via-white to-indigo-50/40 shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-indigo-50 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-sm">
+                  <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"/>
+                  </svg>
+                </div>
+                <div>
+                  <p class="text-sm font-semibold text-gray-800">持仓风格 · 配置诊断 · 调仓建议</p>
+                  <p class="text-[11px] text-gray-400 mt-0.5">基于 DeepSeek 大模型，综合分析持仓数据</p>
+                </div>
+              </div>
+              <button @click="runAiAnalysis()" :disabled="aiLoading"
+                class="px-4 py-2 text-xs font-medium rounded-lg transition flex items-center gap-2 shadow-sm"
+                :class="aiLoading ? 'bg-gray-100 text-gray-400 shadow-none' : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700'">
+                <svg x-show="aiLoading" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                <svg x-show="!aiLoading" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+                <span x-text="aiLoading ? '分析中...' : '开始分析'"></span>
+              </button>
+            </div>
+
+            <div class="px-6 py-5">
+              <div x-show="aiError" class="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p class="text-sm text-red-700 whitespace-pre-wrap" x-text="aiError"></p>
+              </div>
+
+              <div x-show="!aiResult && !aiLoading && !aiError" class="text-center py-14">
+                <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-indigo-50 flex items-center justify-center">
+                  <svg class="w-8 h-8 text-indigo-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/>
+                  </svg>
+                </div>
+                <p class="text-sm text-gray-400 mb-1">点击「开始分析」获取智能解读</p>
+                <p class="text-xs text-gray-300">分析内容：投资风格画像 / 资产配置合理性 / 持仓诊断 / 调仓建议</p>
+              </div>
+
+              <div x-show="aiLoading && !aiResult" class="text-center py-14">
+                <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-indigo-50 flex items-center justify-center">
+                  <svg class="animate-spin w-7 h-7 text-indigo-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                </div>
+                <p class="text-sm text-indigo-600 font-medium mb-1">AI 正在分析持仓数据...</p>
+                <p class="text-xs text-gray-400">通常需要 10-20 秒，请耐心等待</p>
+              </div>
+
+              <div x-show="aiResult" class="ai-content text-sm leading-relaxed" x-html="renderedAiResult"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ========== Screenshot Import Tab ========== -->
+    <div x-show="tab === 'import'" x-transition>
+      <div class="grid lg:grid-cols-2 gap-6">
+        <!-- Upload Area -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h2 class="text-base font-semibold text-gray-800 mb-4">上传基金持仓截图</h2>
+
+          <div class="mb-4">
+            <label class="text-xs text-gray-500 mb-1 block">渠道</label>
+            <div class="flex gap-2">
+              <template x-for="ch in channelOptions" :key="ch.code">
+                <button @click="importChannel = ch.code"
+                  :class="importChannel === ch.code ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'"
+                  class="px-3 py-1.5 text-sm rounded-lg border transition" x-text="ch.name"></button>
+              </template>
+            </div>
+          </div>
+
+          <div
+            @dragover.prevent="dragOver = true"
+            @dragleave.prevent="dragOver = false"
+            @drop.prevent="handleDrop($event)"
+            :class="dragOver ? 'drop-active' : ''"
+            class="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center cursor-pointer transition-all hover:border-brand-400"
+            @click="$refs.fileInput.click()">
+            <input type="file" x-ref="fileInput" @change="handleFileSelect($event)" accept="image/*" multiple class="hidden" />
+            <input type="file" x-ref="folderInput" @change="handleFolderSelect($event)" webkitdirectory class="hidden" />
+
+            <template x-if="selectedFiles.length === 0">
+              <div>
+                <svg class="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0022.5 18.75V5.25A2.25 2.25 0 0020.25 3H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z"/></svg>
+                <p class="text-gray-500 mb-1">拖拽截图到此处，或点击选择图片</p>
+                <p class="text-xs text-gray-400">支持多选，JPG / PNG 格式</p>
+              </div>
+            </template>
+            <template x-if="selectedFiles.length > 0">
+              <div>
+                <div class="flex flex-wrap gap-2 justify-center max-h-48 overflow-y-auto">
+                  <template x-for="(pv, i) in previewUrls" :key="i">
+                    <div class="relative group">
+                      <img :src="pv" class="h-20 rounded-md shadow-sm object-cover" />
+                      <button @click.stop="removeFile(i)"
+                        class="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition">×</button>
+                    </div>
+                  </template>
+                </div>
+                <p class="text-xs text-gray-400 mt-2">已选 <span x-text="selectedFiles.length"></span> 张，点击添加更多</p>
+              </div>
+            </template>
+          </div>
+
+          <div class="mt-3 flex items-center gap-2">
+            <button @click.stop="$refs.folderInput.click()"
+              class="px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition flex items-center gap-1">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z"/></svg>
+              选择文件夹
+            </button>
+            <button x-show="selectedFiles.length > 0" @click="clearFiles()"
+              class="px-3 py-1.5 text-xs border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition">清空</button>
+          </div>
+
+          <div class="mt-3 flex items-center gap-3">
+            <div class="flex-1">
+              <label class="text-xs text-gray-500 mb-1 block">截图日期</label>
+              <input type="date" x-model="snapshotDate"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+            </div>
+            <button @click="parseScreenshots()" :disabled="selectedFiles.length === 0 || ocrLoading"
+              class="flex-1 mt-5 py-2.5 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 disabled:opacity-40 disabled:cursor-not-allowed transition flex items-center justify-center gap-2">
+              <svg x-show="ocrLoading" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+              <span x-text="ocrLoading ? ocrProgress : '开始识别'"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- OCR Results -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h2 class="text-base font-semibold text-gray-800 mb-4">识别结果</h2>
+
+          <div x-show="ocrResults.length === 0" class="py-12 text-center text-gray-400">
+            <p>上传截图并点击「开始识别」</p>
+          </div>
+
+          <div x-show="ocrResults.length > 0" class="space-y-3">
+            <template x-for="(item, idx) in ocrResults" :key="idx">
+              <div class="border border-gray-200 rounded-lg p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                  <span class="font-medium text-gray-900" x-text="item.fund_name || '未识别'"></span>
+                  <label class="flex items-center gap-1.5">
+                    <input type="checkbox" x-model="item.selected" class="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />
+                    <span class="text-xs text-gray-500">导入</span>
+                  </label>
+                </div>
+                <!-- 识别数据预览 -->
+                <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                  <span class="text-gray-500">金额 <span class="text-gray-800 font-medium" x-text="item.market_value ?? '-'"></span></span>
+                  <span class="text-gray-500">昨日收益 <span class="font-medium" :class="profitColor(item.daily_return)" x-text="formatProfit(item.daily_return)"></span></span>
+                  <span class="text-gray-500">持有收益 <span class="font-medium" :class="profitColor(item.profit)" x-text="formatProfit(item.profit)"></span></span>
+                  <span class="text-gray-500">收益率 <span class="font-medium" :class="profitColor(item.profit_rate)" x-text="formatRate(item.profit_rate)"></span></span>
+                </div>
+                <!-- 可编辑字段 -->
+                <div class="grid grid-cols-3 gap-2 text-sm">
+                  <div>
+                    <label class="text-xs text-gray-500">基金代码</label>
+                    <input type="text" x-model="item.fund_code" placeholder="000001"
+                      class="mt-0.5 w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+                  </div>
+                  <div>
+                    <label class="text-xs text-gray-500">持有金额</label>
+                    <input type="number" x-model.number="item.market_value" step="0.01"
+                      class="mt-0.5 w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+                  </div>
+                  <div>
+                    <label class="text-xs text-gray-500">持有收益</label>
+                    <input type="number" x-model.number="item.profit" step="0.01"
+                      class="mt-0.5 w-full px-2.5 py-1.5 border border-gray-200 rounded-md text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+                  </div>
+                </div>
+              </div>
+            </template>
+
+            <button @click="importSnapshot()" :disabled="importLoading"
+              class="w-full py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-40 transition flex items-center justify-center gap-2">
+              <svg x-show="importLoading" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+              <span x-text="importLoading ? '导入中...' : '确认导入'"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========== Add Transaction Tab ========== -->
+    <div x-show="tab === 'add'" x-transition>
+      <div class="max-w-xl mx-auto bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <h2 class="text-base font-semibold text-gray-800 mb-5">手动录入交易</h2>
+        <form @submit.prevent="addTransaction()" class="space-y-4">
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">渠道</label>
+              <select x-model="txnForm.channel_code"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500">
+                <option value="alipay">支付宝</option>
+                <option value="jd">京东金融</option>
+                <option value="wechat">微信理财通</option>
+                <option value="tiantian">天天基金</option>
+                <option value="direct">直销</option>
+                <option value="other">其他</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">交易类型</label>
+              <select x-model="txnForm.txn_type"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500">
+                <option value="buy">买入</option>
+                <option value="sell">卖出</option>
+                <option value="dividend">分红</option>
+                <option value="bonus">红利再投</option>
+              </select>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">基金代码</label>
+              <input type="text" x-model="txnForm.fund_code" placeholder="000001" required
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">交易日期</label>
+              <input type="date" x-model="txnForm.txn_date" required
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">交易金额</label>
+              <input type="number" x-model="txnForm.amount" step="0.01" required placeholder="10000"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">确认份额</label>
+              <input type="number" x-model="txnForm.shares" step="0.01" placeholder="5000"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">确认净值</label>
+              <input type="number" x-model="txnForm.nav" step="0.0001" placeholder="1.5000"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-700 mb-1">手续费</label>
+              <input type="number" x-model="txnForm.fee" step="0.01" placeholder="0"
+                class="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+            </div>
+          </div>
+          <button type="submit" :disabled="addLoading"
+            class="w-full py-2.5 bg-brand-600 text-white rounded-lg font-medium hover:bg-brand-700 disabled:opacity-40 transition">
+            <span x-text="addLoading ? '提交中...' : '提交交易'"></span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ========== Transaction History Tab ========== -->
+    <div x-show="tab === 'history'" x-transition>
+      <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-wrap gap-3">
+          <h2 class="text-base font-semibold text-gray-800">交易记录</h2>
+          <div class="flex items-center gap-3">
+            <input type="text" x-model="txnFilter.code" placeholder="基金代码" @input.debounce.300ms="loadTransactions()"
+              class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm w-28 focus:ring-1 focus:ring-brand-500 focus:border-brand-500" />
+            <button @click="loadTransactions()" class="text-sm text-brand-600 hover:text-brand-800 transition">刷新</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm" x-show="transactions.length">
+            <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
+              <tr>
+                <th class="px-5 py-3 text-left">日期</th>
+                <th class="px-5 py-3 text-left">渠道</th>
+                <th class="px-5 py-3 text-left">基金代码</th>
+                <th class="px-5 py-3 text-left">基金名称</th>
+                <th class="px-5 py-3 text-left">类型</th>
+                <th class="px-5 py-3 text-right">金额</th>
+                <th class="px-5 py-3 text-right">份额</th>
+                <th class="px-5 py-3 text-right">净值</th>
+                <th class="px-5 py-3 text-right">手续费</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+              <template x-for="t in transactions" :key="t.id">
+                <tr class="hover:bg-gray-50/50 transition">
+                  <td class="px-5 py-3 text-gray-600" x-text="t.txn_date"></td>
+                  <td class="px-5 py-3">
+                    <span class="inline-block px-2 py-0.5 text-xs rounded-full bg-brand-50 text-brand-700" x-text="t.channel_name"></span>
+                  </td>
+                  <td class="px-5 py-3 font-mono text-gray-600" x-text="t.fund_code"></td>
+                  <td class="px-5 py-3 text-gray-900" x-text="t.fund_name"></td>
+                  <td class="px-5 py-3">
+                    <span class="inline-block px-2 py-0.5 text-xs rounded-full"
+                      :class="{
+                        'bg-green-50 text-green-700': t.txn_type === 'buy' || t.txn_type === 'bonus',
+                        'bg-red-50 text-red-700': t.txn_type === 'sell',
+                        'bg-yellow-50 text-yellow-700': t.txn_type === 'dividend',
+                        'bg-gray-100 text-gray-600': t.txn_type === 'adjust',
+                      }"
+                      x-text="t.txn_type_label"></span>
+                  </td>
+                  <td class="px-5 py-3 text-right text-gray-700" x-text="formatMoney(t.amount)"></td>
+                  <td class="px-5 py-3 text-right text-gray-700" x-text="t.shares ? t.shares.toFixed(2) : '-'"></td>
+                  <td class="px-5 py-3 text-right text-gray-700" x-text="t.nav ? t.nav.toFixed(4) : '-'"></td>
+                  <td class="px-5 py-3 text-right text-gray-500" x-text="t.fee ? t.fee.toFixed(2) : '0.00'"></td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+          <div x-show="!transactions.length" class="py-16 text-center text-gray-400">暂无交易记录</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============ Toast Notification ============ -->
+  <div x-show="toast.show" x-transition
+    class="fixed bottom-6 right-6 px-5 py-3 rounded-lg shadow-lg text-white text-sm z-50"
+    :class="toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'">
+    <span x-text="toast.message"></span>
+  </div>
+
+  <!-- ============ Application Script ============ -->
+  <script>
+    function app() {
+      return {
+        tab: 'dashboard',
+        tabs: [
+          { id: 'dashboard', label: '总览' },
+          { id: 'analysis',  label: '持仓分析' },
+          { id: 'import',    label: '截图导入' },
+          { id: 'add',       label: '手动录入' },
+          { id: 'history',   label: '交易记录' },
+        ],
+
+        summary: { fund_count: 0, total_cost: 0, total_market_value: 0, total_profit: 0, total_profit_rate: 0, holdings: [] },
+        channelFilter: '',
+        industryFilter: '',
+        sortKey: 'market_value',
+        sortAsc: false,
+        transactions: [],
+        txnFilter: { code: '' },
+
+        // Channel options
+        channelOptions: [
+          { code: 'alipay', name: '支付宝' },
+          { code: 'jd',     name: '京东金融' },
+          { code: 'wechat', name: '微信理财通' },
+          { code: 'tiantian', name: '天天基金' },
+        ],
+
+        // OCR state
+        importChannel: 'alipay',
+        selectedFiles: [],
+        previewUrls: [],
+        dragOver: false,
+        ocrLoading: false,
+        ocrProgress: '',
+        ocrResults: [],
+        importLoading: false,
+        snapshotDate: new Date().toISOString().slice(0, 10),
+
+        // Add transaction form
+        txnForm: { channel_code: 'alipay', fund_code: '', txn_type: 'buy', txn_date: new Date().toISOString().slice(0, 10), amount: '', shares: '', nav: '', fee: '0' },
+        addLoading: false,
+
+        // Sync all
+        syncAllLoading: false,
+        syncAllProgress: '',
+
+        // Charts & industry sync
+        _charts: {},
+        syncIndustryLoading: false,
+
+        // AI analysis
+        aiLoading: false,
+        aiResult: '',
+        aiError: '',
+
+        // Toast
+        toast: { show: false, message: '', type: 'success' },
+
+        init() {
+          this.loadSummary();
+        },
+
+        switchTab(t) {
+          this.tab = t;
+          if (t === 'dashboard') this.loadSummary();
+          if (t === 'analysis') { this.loadSummary(); this.$nextTick(() => this.renderCharts()); }
+          if (t === 'history') this.loadTransactions();
+        },
+
+        // ---- Channel stats ----
+        get channelStatsItems() {
+          if (!this.summary.holdings) return [];
+          const map = {};
+          for (const h of this.summary.holdings) {
+            const ch = h.channel_name || '未知';
+            if (!map[ch]) map[ch] = { name: ch, count: 0, cost: 0, market: 0, profit: 0 };
+            map[ch].count++;
+            map[ch].cost += h.cost_amount || 0;
+            map[ch].market += h.market_value || 0;
+            map[ch].profit += h.profit || 0;
+          }
+          return Object.values(map).map(cs => ({
+            ...cs,
+            rate: cs.cost > 0 ? cs.profit / cs.cost * 100 : 0,
+          })).sort((a, b) => b.market - a.market);
+        },
+
+        get filteredStats() {
+          let list = this.summary.holdings || [];
+          if (this.channelFilter) list = list.filter(h => h.channel_name === this.channelFilter);
+          if (this.industryFilter) list = list.filter(h => (h.industry || '其他') === this.industryFilter);
+          const cost = list.reduce((s, h) => s + (h.cost_amount || 0), 0);
+          const market = list.reduce((s, h) => s + (h.market_value || 0), 0);
+          const profit = list.reduce((s, h) => s + (h.profit || 0), 0);
+          return {
+            count: list.length,
+            cost,
+            market,
+            profit,
+            rate: cost > 0 ? profit / cost * 100 : 0,
+          };
+        },
+
+        // ---- Analysis metrics ----
+        get analysisMetrics() {
+          const h = this.summary.holdings || [];
+          if (!h.length) return {};
+          const byMv = [...h].sort((a, b) => (b.market_value || 0) - (a.market_value || 0));
+          const byRate = [...h].filter(x => x.profit_rate != null).sort((a, b) => b.profit_rate - a.profit_rate);
+          const byProfit = [...h].filter(x => x.profit != null).sort((a, b) => b.profit - a.profit);
+          return {
+            largest: byMv[0],
+            bestRate: byRate[0],
+            worstRate: byRate[byRate.length - 1],
+            bestProfit: byProfit[0],
+            worstProfit: byProfit[byProfit.length - 1],
+          };
+        },
+
+        get industryStatsItems() {
+          if (!this.summary.holdings) return [];
+          const map = {};
+          for (const h of this.summary.holdings) {
+            const ind = h.industry || '其他';
+            if (!map[ind]) map[ind] = { name: ind, count: 0, cost: 0, market: 0, profit: 0 };
+            map[ind].count++;
+            map[ind].cost += h.cost_amount || 0;
+            map[ind].market += h.market_value || 0;
+            map[ind].profit += h.profit || 0;
+          }
+          return Object.values(map).map(s => ({
+            ...s,
+            rate: s.cost > 0 ? s.profit / s.cost * 100 : 0,
+          })).sort((a, b) => b.market - a.market);
+        },
+
+        get renderedAiResult() {
+          if (!this.aiResult) return '';
+          try { return marked.parse(this.aiResult); }
+          catch { return this.aiResult.replace(/\n/g, '<br>'); }
+        },
+
+        async runAiAnalysis() {
+          this.aiLoading = true;
+          this.aiError = '';
+          try {
+            const res = await fetch('/api/ai/analyze', { method: 'POST' });
+            const data = await res.json();
+            if (!res.ok) {
+              this.aiError = data.error || '分析失败';
+              return;
+            }
+            this.aiResult = data.content;
+          } catch (e) {
+            this.aiError = '网络请求失败，请稍后重试';
+          } finally {
+            this.aiLoading = false;
+          }
+        },
+
+        async syncIndustries() {
+          this.syncIndustryLoading = true;
+          try {
+            const res = await fetch('/api/fund/sync-industries', { method: 'POST' });
+            const data = await res.json();
+            this.showToast(`行业分类同步完成，更新 ${data.count} 只基金`, 'success');
+            await this.loadSummary();
+            this.$nextTick(() => this.renderCharts());
+          } catch (e) {
+            this.showToast('同步失败', 'error');
+          } finally {
+            this.syncIndustryLoading = false;
+          }
+        },
+
+        // ---- Sorting ----
+        get sortedHoldings() {
+          if (!this.summary.holdings) return [];
+          let list = this.summary.holdings;
+          if (this.channelFilter) {
+            list = list.filter(h => h.channel_name === this.channelFilter);
+          }
+          if (this.industryFilter) {
+            list = list.filter(h => (h.industry || '其他') === this.industryFilter);
+          }
+          return [...list].sort((a, b) => {
+            const av = a[this.sortKey] ?? '';
+            const bv = b[this.sortKey] ?? '';
+            let cmp;
+            if (typeof av === 'string' || typeof bv === 'string') {
+              cmp = String(av).localeCompare(String(bv), 'zh-CN');
+            } else {
+              cmp = (av === -Infinity ? -1 : bv === -Infinity ? 1 : av - bv);
+            }
+            return this.sortAsc ? cmp : -cmp;
+          });
+        },
+
+        toggleSort(key) {
+          if (this.sortKey === key) {
+            this.sortAsc = !this.sortAsc;
+          } else {
+            this.sortKey = key;
+            this.sortAsc = false;
+          }
+        },
+
+        // ---- Data loading ----
+        async loadSummary() {
+          try {
+            const res = await fetch('/api/summary');
+            this.summary = await res.json();
+          } catch (e) { console.error(e); }
+        },
+
+        async loadTransactions() {
+          try {
+            let url = '/api/transactions?limit=50';
+            if (this.txnFilter.code) url += '&code=' + this.txnFilter.code;
+            const res = await fetch(url);
+            this.transactions = await res.json();
+          } catch (e) { console.error(e); }
+        },
+
+        // ---- NAV sync ----
+        async syncNav(fundCode) {
+          try {
+            const res = await fetch(`/api/fund/${fundCode}/sync`, { method: 'POST' });
+            const data = await res.json();
+            this.showToast(`同步完成，新增 ${data.count} 条净值`, 'success');
+            this.loadSummary();
+          } catch (e) {
+            this.showToast('同步失败', 'error');
+          }
+        },
+
+        // ---- Delete holding ----
+        async deleteHolding(holdingId, fundName) {
+          if (!confirm(`确认删除「${fundName}」的持仓记录？`)) return;
+          try {
+            const res = await fetch(`/api/holdings/${holdingId}`, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.success) {
+              this.showToast('已删除', 'success');
+              this.loadSummary();
+            } else {
+              this.showToast(data.error || '删除失败', 'error');
+            }
+          } catch (e) {
+            this.showToast('删除请求失败', 'error');
+          }
+        },
+
+        async deleteAllHoldings() {
+          if (!confirm(`确认清空全部 ${this.summary.holdings.length} 条持仓记录？此操作不可恢复。`)) return;
+          try {
+            for (const h of this.summary.holdings) {
+              await fetch(`/api/holdings/${h.holding_id}`, { method: 'DELETE' });
+            }
+            this.showToast('已清空全部持仓', 'success');
+            this.loadSummary();
+          } catch (e) {
+            this.showToast('清空失败', 'error');
+          }
+        },
+
+        // ---- Sync all NAV ----
+        async syncAllNav() {
+          const holdings = this.summary.holdings;
+          if (!holdings || holdings.length === 0) return;
+          this.syncAllLoading = true;
+          const codes = [...new Set(holdings.map(h => h.fund_code))];
+          let totalNew = 0;
+
+          try {
+            for (let i = 0; i < codes.length; i++) {
+              this.syncAllProgress = `同步中 (${i + 1}/${codes.length})`;
+              const res = await fetch(`/api/fund/${codes[i]}/sync`, { method: 'POST' });
+              const data = await res.json();
+              if (data.count) totalNew += data.count;
+            }
+            this.showToast(`同步完成，共新增 ${totalNew} 条净值`, 'success');
+            this.loadSummary();
+          } catch (e) {
+            this.showToast('同步失败', 'error');
+          } finally {
+            this.syncAllLoading = false;
+            this.syncAllProgress = '';
+          }
+        },
+
+        // ---- File upload & OCR ----
+        handleFileSelect(event) {
+          this.addFiles(Array.from(event.target.files));
+          event.target.value = '';
+        },
+
+        handleFolderSelect(event) {
+          const imgs = Array.from(event.target.files).filter(f => f.type.startsWith('image/'));
+          this.addFiles(imgs);
+          event.target.value = '';
+        },
+
+        handleDrop(event) {
+          this.dragOver = false;
+          const imgs = Array.from(event.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+          this.addFiles(imgs);
+        },
+
+        addFiles(files) {
+          for (const f of files) {
+            this.selectedFiles.push(f);
+            this.previewUrls.push(URL.createObjectURL(f));
+          }
+          this.ocrResults = [];
+        },
+
+        removeFile(index) {
+          URL.revokeObjectURL(this.previewUrls[index]);
+          this.selectedFiles.splice(index, 1);
+          this.previewUrls.splice(index, 1);
+        },
+
+        clearFiles() {
+          this.previewUrls.forEach(u => URL.revokeObjectURL(u));
+          this.selectedFiles = [];
+          this.previewUrls = [];
+          this.ocrResults = [];
+        },
+
+        async parseScreenshots() {
+          if (this.selectedFiles.length === 0) return;
+          this.ocrLoading = true;
+          this.ocrResults = [];
+          const total = this.selectedFiles.length;
+          let allFunds = [];
+          const seen = new Set();
+
+          try {
+            for (let i = 0; i < total; i++) {
+              this.ocrProgress = `识别中... (${i + 1}/${total})`;
+              const formData = new FormData();
+              formData.append('file', this.selectedFiles[i]);
+              formData.append('channel', this.importChannel);
+              const res = await fetch('/api/ocr/parse', { method: 'POST', body: formData });
+              const data = await res.json();
+              if (data.success && data.funds) {
+                for (const f of data.funds) {
+                  const key = f.fund_code || f.fund_name;
+                  if (!seen.has(key)) {
+                    seen.add(key);
+                    allFunds.push({ ...f, selected: true });
+                  }
+                }
+              }
+            }
+
+            this.ocrResults = allFunds;
+            if (allFunds.length === 0) {
+              this.showToast('未识别到基金信息，请确认截图内容', 'error');
+            } else {
+              this.showToast(`${total} 张截图共识别到 ${allFunds.length} 只基金`, 'success');
+            }
+          } catch (e) {
+            this.showToast('识别请求失败', 'error');
+          } finally {
+            this.ocrLoading = false;
+            this.ocrProgress = '';
+          }
+        },
+
+        async importSnapshot() {
+          const selected = this.ocrResults.filter(r => r.selected && r.fund_code);
+          if (selected.length === 0) {
+            this.showToast('请至少选择一只基金并填写代码', 'error');
+            return;
+          }
+          this.importLoading = true;
+          try {
+            const res = await fetch('/api/import/snapshot', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ funds: selected, channel: this.importChannel, snapshot_date: this.snapshotDate }),
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.showToast(`成功导入 ${data.count} 只基金`, 'success');
+              this.clearFiles();
+              this.loadSummary();
+            } else {
+              this.showToast(data.error || '导入失败', 'error');
+            }
+          } catch (e) {
+            this.showToast('导入请求失败', 'error');
+          } finally {
+            this.importLoading = false;
+          }
+        },
+
+        // ---- Add transaction ----
+        async addTransaction() {
+          this.addLoading = true;
+          try {
+            const form = new FormData();
+            for (const [k, v] of Object.entries(this.txnForm)) {
+              form.append(k, v);
+            }
+            const res = await fetch('/api/transactions', { method: 'POST', body: form });
+            const data = await res.json();
+            if (data.success) {
+              this.showToast('交易添加成功', 'success');
+              this.txnForm = { channel_code: 'alipay', fund_code: '', txn_type: 'buy', txn_date: new Date().toISOString().slice(0, 10), amount: '', shares: '', nav: '', fee: '0' };
+              this.loadSummary();
+            } else {
+              this.showToast(data.error || '添加失败', 'error');
+            }
+          } catch (e) {
+            this.showToast('请求失败', 'error');
+          } finally {
+            this.addLoading = false;
+          }
+        },
+
+        // ---- Charts ----
+        renderCharts() {
+          const holdings = this.summary.holdings || [];
+          if (!holdings.length) return;
+
+          const COLORS = [
+            '#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6',
+            '#ec4899','#14b8a6','#f97316','#06b6d4','#84cc16',
+            '#e11d48','#7c3aed','#0ea5e9','#d946ef','#facc15',
+          ];
+
+          for (const key of Object.keys(this._charts)) {
+            this._charts[key].destroy();
+          }
+          this._charts = {};
+
+          const channelMap = {};
+          for (const h of holdings) {
+            const ch = h.channel_name || '未知';
+            channelMap[ch] = (channelMap[ch] || 0) + (h.market_value || 0);
+          }
+          const chLabels = Object.keys(channelMap);
+          const chData = Object.values(channelMap);
+          const elCh = document.getElementById('chartChannel');
+          if (elCh) {
+            this._charts.channel = new Chart(elCh, {
+              type: 'doughnut',
+              data: {
+                labels: chLabels,
+                datasets: [{ data: chData, backgroundColor: COLORS.slice(0, chLabels.length), borderWidth: 0 }],
+              },
+              options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                  legend: { position: 'right', labels: { boxWidth: 12, padding: 14, font: { size: 12 } } },
+                  tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed.toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2})}` } },
+                },
+              },
+            });
+          }
+
+          const sorted = [...holdings].sort((a,b) => (b.market_value||0) - (a.market_value||0));
+          const allocLabels = sorted.map(h => h.fund_name?.length > 10 ? h.fund_name.slice(0,10)+'…' : h.fund_name);
+          const allocData = sorted.map(h => h.market_value || 0);
+          const elAl = document.getElementById('chartAllocation');
+          if (elAl) {
+            this._charts.allocation = new Chart(elAl, {
+              type: 'doughnut',
+              data: {
+                labels: allocLabels,
+                datasets: [{ data: allocData, backgroundColor: COLORS.slice(0, allocLabels.length), borderWidth: 0 }],
+              },
+              options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                  legend: { position: 'right', labels: { boxWidth: 12, padding: 10, font: { size: 11 } } },
+                  tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed.toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2})}` } },
+                },
+              },
+            });
+          }
+
+          // Industry doughnut
+          const indMap = {};
+          for (const h of holdings) {
+            const ind = h.industry || '其他';
+            indMap[ind] = (indMap[ind] || 0) + (h.market_value || 0);
+          }
+          const indEntries = Object.entries(indMap).sort((a,b) => b[1] - a[1]);
+          const indLabels = indEntries.map(e => e[0]);
+          const indData = indEntries.map(e => e[1]);
+          const elInd = document.getElementById('chartIndustry');
+          if (elInd) {
+            this._charts.industry = new Chart(elInd, {
+              type: 'doughnut',
+              data: {
+                labels: indLabels,
+                datasets: [{ data: indData, backgroundColor: COLORS.concat(COLORS).slice(0, indLabels.length), borderWidth: 0 }],
+              },
+              options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                  legend: { position: 'right', labels: { boxWidth: 12, padding: 10, font: { size: 11 } } },
+                  tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed.toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2})}` } },
+                },
+              },
+            });
+          }
+
+          // Industry profit bar
+          const indProfitMap = {};
+          for (const h of holdings) {
+            const ind = h.industry || '其他';
+            indProfitMap[ind] = (indProfitMap[ind] || 0) + (h.profit || 0);
+          }
+          const indProfitEntries = Object.entries(indProfitMap).sort((a,b) => a[1] - b[1]);
+          const indPLabels = indProfitEntries.map(e => e[0]);
+          const indPData = indProfitEntries.map(e => e[1]);
+          const indPColors = indPData.map(v => v >= 0 ? '#ef4444' : '#10b981');
+          const elIndP = document.getElementById('chartIndustryProfit');
+          if (elIndP) {
+            this._charts.industryProfit = new Chart(elIndP, {
+              type: 'bar',
+              data: {
+                labels: indPLabels,
+                datasets: [{ data: indPData, backgroundColor: indPColors, borderRadius: 3, barThickness: 18 }],
+              },
+              options: {
+                indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                scales: {
+                  x: { grid: { color: '#f3f4f6' }, ticks: { callback: v => v.toLocaleString() } },
+                  y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+                },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: { callbacks: { label: ctx => `盈亏: ${ctx.parsed.x >= 0 ? '+' : ''}${ctx.parsed.x.toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2})}` } },
+                },
+              },
+            });
+          }
+
+          const profitSorted = [...holdings].filter(h => h.profit != null).sort((a,b) => a.profit - b.profit);
+          const profitLabels = profitSorted.map(h => h.fund_name?.length > 12 ? h.fund_name.slice(0,12)+'…' : h.fund_name);
+          const profitData = profitSorted.map(h => h.profit);
+          const profitColors = profitData.map(v => v >= 0 ? '#ef4444' : '#10b981');
+          const elP = document.getElementById('chartProfit');
+          if (elP) {
+            this._charts.profit = new Chart(elP, {
+              type: 'bar',
+              data: {
+                labels: profitLabels,
+                datasets: [{ data: profitData, backgroundColor: profitColors, borderRadius: 3, barThickness: 18 }],
+              },
+              options: {
+                indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                scales: {
+                  x: { grid: { color: '#f3f4f6' }, ticks: { callback: v => v.toLocaleString() } },
+                  y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+                },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: { callbacks: { label: ctx => `盈亏: ${ctx.parsed.x >= 0 ? '+' : ''}${ctx.parsed.x.toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2})}` } },
+                },
+              },
+            });
+          }
+
+          const rateSorted = [...holdings].filter(h => h.profit_rate != null).sort((a,b) => a.profit_rate - b.profit_rate);
+          const rateLabels = rateSorted.map(h => h.fund_name?.length > 12 ? h.fund_name.slice(0,12)+'…' : h.fund_name);
+          const rateData = rateSorted.map(h => h.profit_rate);
+          const rateColors = rateData.map(v => v >= 0 ? '#ef4444' : '#10b981');
+          const elR = document.getElementById('chartRate');
+          if (elR) {
+            this._charts.rate = new Chart(elR, {
+              type: 'bar',
+              data: {
+                labels: rateLabels,
+                datasets: [{ data: rateData, backgroundColor: rateColors, borderRadius: 3, barThickness: 18 }],
+              },
+              options: {
+                indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                scales: {
+                  x: { grid: { color: '#f3f4f6' }, ticks: { callback: v => v.toFixed(1) + '%' } },
+                  y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+                },
+                plugins: {
+                  legend: { display: false },
+                  tooltip: { callbacks: { label: ctx => `收益率: ${ctx.parsed.x >= 0 ? '+' : ''}${ctx.parsed.x.toFixed(2)}%` } },
+                },
+              },
+            });
+          }
+
+          const cmSorted = [...holdings].sort((a,b) => (b.market_value||0) - (a.market_value||0));
+          const cmLabels = cmSorted.map(h => h.fund_name?.length > 12 ? h.fund_name.slice(0,12)+'…' : h.fund_name);
+          const costData = cmSorted.map(h => h.cost_amount || 0);
+          const mvData = cmSorted.map(h => h.market_value || 0);
+          const elCM = document.getElementById('chartCostMarket');
+          if (elCM) {
+            this._charts.costMarket = new Chart(elCM, {
+              type: 'bar',
+              data: {
+                labels: cmLabels,
+                datasets: [
+                  { label: '成本', data: costData, backgroundColor: '#94a3b8', borderRadius: 3, barThickness: 14 },
+                  { label: '市值', data: mvData, backgroundColor: '#6366f1', borderRadius: 3, barThickness: 14 },
+                ],
+              },
+              options: {
+                indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                scales: {
+                  x: { grid: { color: '#f3f4f6' }, ticks: { callback: v => v.toLocaleString() } },
+                  y: { grid: { display: false }, ticks: { font: { size: 11 } } },
+                },
+                plugins: {
+                  legend: { position: 'top', labels: { boxWidth: 12, padding: 16, font: { size: 12 } } },
+                  tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.x.toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2})}` } },
+                },
+              },
+            });
+          }
+        },
+
+        // ---- Download ----
+        downloadHoldings() {
+          const rows = this.sortedHoldings;
+          if (!rows.length) return;
+          const header = ['渠道','基金代码','基金名称','行业','持有份额','持仓成本','最新净值','净值日期','市值','盈亏','收益率(%)'];
+          const csv = [
+            '\uFEFF' + header.join(','),
+            ...rows.map(h => [
+              h.channel_name,
+              h.fund_code,
+              h.fund_name,
+              h.industry || '其他',
+              h.shares?.toFixed(2) ?? '',
+              h.cost_amount?.toFixed(2) ?? '',
+              h.latest_nav?.toFixed(4) ?? '',
+              h.latest_nav_date ?? '',
+              h.market_value?.toFixed(2) ?? '',
+              h.profit?.toFixed(2) ?? '',
+              h.profit_rate?.toFixed(2) ?? '',
+            ].map(v => '"' + String(v).replace(/"/g, '""') + '"').join(','))
+          ].join('\n');
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `持仓明细_${new Date().toISOString().slice(0, 10)}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        },
+
+        // ---- Formatters ----
+        formatMoney(v) {
+          if (v == null) return '-';
+          return v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        },
+        formatProfit(v) {
+          if (v == null) return '-';
+          return (v >= 0 ? '+' : '') + v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        },
+        formatRate(v) {
+          if (v == null) return '-';
+          return (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+        },
+        profitColor(v) {
+          if (v == null) return 'text-gray-500';
+          return v >= 0 ? 'text-red-600' : 'text-green-600';
+        },
+
+        showToast(message, type = 'success') {
+          this.toast = { show: true, message, type };
+          setTimeout(() => { this.toast.show = false; }, 3000);
+        },
+      };
+    }
+  </script>
+</body>
+</html>
