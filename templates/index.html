@@ -44,7 +44,7 @@
       <div class="flex items-center justify-between h-14">
         <div class="flex items-center gap-2">
           <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"/></svg>
-          <span class="text-white font-semibold text-lg tracking-wide">全渠道基金管理</span>
+          <span class="text-white font-semibold text-lg tracking-wide">全渠道投资管理</span>
         </div>
         <div class="flex gap-1">
           <template x-for="t in tabs" :key="t.id">
@@ -217,12 +217,306 @@
       </div>
     </div>
 
+    <!-- ========== Stock Tab ========== -->
+    <div x-show="tab === 'stock'" x-transition>
+      <div class="grid lg:grid-cols-3 gap-6">
+        <!-- Left: Stock Holdings -->
+        <div class="lg:col-span-2">
+          <!-- Stock Summary Cards -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+            <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+              <p class="text-[11px] text-gray-400 mb-1">持有股票</p>
+              <p class="text-lg font-bold text-gray-900" x-text="stockSummary.stock_count"></p>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+              <p class="text-[11px] text-gray-400 mb-1">总成本</p>
+              <p class="text-lg font-bold text-gray-900" x-text="formatMoney(stockSummary.total_cost)"></p>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+              <p class="text-[11px] text-gray-400 mb-1">总市值</p>
+              <p class="text-lg font-bold text-gray-900" x-text="formatMoney(stockSummary.total_market_value)"></p>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
+              <p class="text-[11px] text-gray-400 mb-1">总盈亏</p>
+              <p class="text-lg font-bold" :class="profitColor(stockSummary.total_profit)" x-text="formatProfit(stockSummary.total_profit)"></p>
+              <p class="text-xs mt-0.5" :class="profitColor(stockSummary.total_profit_rate)" x-text="formatRate(stockSummary.total_profit_rate)"></p>
+            </div>
+          </div>
+
+          <!-- Stock Holdings Table -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 class="text-base font-semibold text-gray-800">股票持仓</h2>
+              <div class="flex items-center gap-3">
+                <button @click="syncAllStockPrices()" :disabled="stockSyncAllLoading"
+                  class="text-sm text-brand-600 hover:text-brand-800 disabled:opacity-40 transition flex items-center gap-1">
+                  <svg x-show="stockSyncAllLoading" class="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                  <span x-text="stockSyncAllLoading ? '同步中...' : '同步全部行情'"></span>
+                </button>
+                <button @click="clearAllStockHoldings()" x-show="stockSummary.holdings && stockSummary.holdings.length"
+                  class="text-sm text-red-400 hover:text-red-600 transition flex items-center gap-1">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                  一键清除
+                </button>
+              </div>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm" x-show="stockSummary.holdings && stockSummary.holdings.length">
+                <thead class="bg-gray-50 text-gray-500 text-xs tracking-wider">
+                  <tr>
+                    <th class="px-4 py-3 text-left">渠道</th>
+                    <th class="px-4 py-3 text-left">代码</th>
+                    <th class="px-4 py-3 text-left">名称</th>
+                    <th class="px-4 py-3 text-left">行业</th>
+                    <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-800" @click="toggleStockSort('shares')">
+                      持仓 <span x-show="stockSortKey==='shares'" x-text="stockSortAsc ? '↑' : '↓'" class="text-brand-600"></span>
+                    </th>
+                    <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-800" @click="toggleStockSort('cost_price')">
+                      成本价 <span x-show="stockSortKey==='cost_price'" x-text="stockSortAsc ? '↑' : '↓'" class="text-brand-600"></span>
+                    </th>
+                    <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-800" @click="toggleStockSort('latest_price')">
+                      现价 <span x-show="stockSortKey==='latest_price'" x-text="stockSortAsc ? '↑' : '↓'" class="text-brand-600"></span>
+                    </th>
+                    <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-800" @click="toggleStockSort('market_value')">
+                      市值 <span x-show="stockSortKey==='market_value'" x-text="stockSortAsc ? '↑' : '↓'" class="text-brand-600"></span>
+                    </th>
+                    <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-800" @click="toggleStockSort('profit')">
+                      盈亏 <span x-show="stockSortKey==='profit'" x-text="stockSortAsc ? '↑' : '↓'" class="text-brand-600"></span>
+                    </th>
+                    <th class="px-4 py-3 text-right cursor-pointer select-none hover:text-gray-800" @click="toggleStockSort('profit_rate')">
+                      收益率 <span x-show="stockSortKey==='profit_rate'" x-text="stockSortAsc ? '↑' : '↓'" class="text-brand-600"></span>
+                    </th>
+                    <th class="px-4 py-3 text-center">操作</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50">
+                  <template x-for="h in sortedStockHoldings" :key="h.stock_code + h.channel_name">
+                    <tr class="hover:bg-gray-50/50 transition">
+                      <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 text-xs rounded-full bg-brand-50 text-brand-700" x-text="h.channel_name"></span></td>
+                      <td class="px-4 py-3 font-mono text-gray-600">
+                        <template x-if="h._editing">
+                          <form @submit.prevent="saveStockCode(h)" class="flex items-center gap-1">
+                            <input type="text" x-model="h._newCode" class="w-20 px-1.5 py-0.5 text-xs border border-brand-300 rounded bg-white focus:ring-1 focus:ring-brand-500 outline-none" @keydown.escape="h._editing=false" x-ref="codeInput" autofocus>
+                            <button type="submit" class="text-brand-600 hover:text-brand-800" title="保存">
+                              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
+                            </button>
+                            <button type="button" @click="h._editing=false" class="text-gray-400 hover:text-gray-600" title="取消">
+                              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>
+                            </button>
+                          </form>
+                        </template>
+                        <template x-if="!h._editing">
+                          <span class="cursor-pointer hover:text-brand-600 hover:underline transition" @click="h._newCode=h.stock_code; h._editing=true" x-text="h.stock_code" title="点击修改代码"></span>
+                        </template>
+                      </td>
+                      <td class="px-4 py-3 font-medium" :class="h.latest_price ? 'text-gray-900' : 'text-red-500'">
+                        <span x-text="h.stock_name"></span>
+                        <span x-show="!h.latest_price" class="ml-1 inline-block px-1.5 py-0.5 text-[10px] rounded bg-red-50 text-red-400 border border-red-100">无行情</span>
+                      </td>
+                      <td class="px-4 py-3"><span class="inline-block px-2 py-0.5 text-xs rounded-full bg-purple-50 text-purple-700" x-text="h.industry || '其他'"></span></td>
+                      <td class="px-4 py-3 text-right tabular-nums" x-text="h.shares?.toFixed(0)"></td>
+                      <td class="px-4 py-3 text-right tabular-nums" x-text="h.cost_price?.toFixed(4) ?? '-'"></td>
+                      <td class="px-4 py-3 text-right tabular-nums">
+                        <span x-text="h.latest_price?.toFixed(4) ?? '-'" :class="!h.latest_price ? 'text-red-400' : ''"></span>
+                        <span class="text-[10px] block" :class="h.latest_price_date ? 'text-gray-400' : 'text-red-400'" x-text="h.latest_price_date || '无行情'"></span>
+                      </td>
+                      <td class="px-4 py-3 text-right tabular-nums font-medium" :class="h.market_value == null ? 'text-red-400' : ''" x-text="h.market_value != null ? formatMoney(h.market_value) : '—'"></td>
+                      <td class="px-4 py-3 text-right tabular-nums font-medium" :class="h.profit != null ? profitColor(h.profit) : 'text-red-400'" x-text="h.profit != null ? formatProfit(h.profit) : '—'"></td>
+                      <td class="px-4 py-3 text-right tabular-nums font-medium" :class="h.profit_rate != null ? profitColor(h.profit_rate) : 'text-red-400'" x-text="h.profit_rate != null ? formatRate(h.profit_rate) : '—'"></td>
+                      <td class="px-4 py-3 text-center">
+                        <div class="flex items-center justify-center gap-2">
+                          <button @click="syncStockPrice(h.stock_code)" class="text-gray-400 hover:text-brand-600 transition" title="同步行情">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M21.015 4.356v4.992"/></svg>
+                          </button>
+                          <button @click="deleteStockHolding(h.holding_id)" class="text-gray-400 hover:text-red-500 transition" title="删除">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <div x-show="!stockSummary.holdings || !stockSummary.holdings.length" class="py-16 text-center text-gray-400">
+                <p>暂无股票持仓</p>
+                <p class="text-sm mt-1">通过右侧截图导入或手动录入</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Import & Add -->
+        <div class="lg:col-span-1 space-y-5">
+          <!-- Mode Switch -->
+          <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-1 flex">
+            <button @click="stockImportMode='screenshot'"
+              :class="stockImportMode==='screenshot' ? 'bg-brand-600 text-white shadow' : 'text-gray-500 hover:text-gray-800'"
+              class="flex-1 py-2 text-sm font-medium rounded-lg transition">截图导入</button>
+            <button @click="stockImportMode='manual'"
+              :class="stockImportMode==='manual' ? 'bg-brand-600 text-white shadow' : 'text-gray-500 hover:text-gray-800'"
+              class="flex-1 py-2 text-sm font-medium rounded-lg transition">手动录入</button>
+          </div>
+
+          <!-- Screenshot Import -->
+          <div x-show="stockImportMode==='screenshot'" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sticky top-20">
+            <h3 class="text-base font-semibold text-gray-800 mb-4">截图导入持仓</h3>
+            <div class="space-y-3">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-500 mb-1">券商渠道</label>
+                  <select x-model="stockOcrChannel"
+                    class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                    <template x-for="ch in stockChannelOptions" :key="ch.code">
+                      <option :value="ch.code" x-text="ch.name"></option>
+                    </template>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-500 mb-1">截图日期</label>
+                  <input type="date" x-model="stockOcrDate"
+                    class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">选择截图</label>
+                <label class="flex items-center justify-center w-full h-20 border-2 border-dashed border-gray-200 rounded-lg cursor-pointer hover:border-brand-400 transition"
+                  :class="stockOcrLoading ? 'opacity-50 pointer-events-none' : ''">
+                  <div class="text-center">
+                    <svg class="mx-auto h-6 w-6 text-gray-300" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z"/></svg>
+                    <p class="mt-1 text-xs text-gray-400" x-text="stockOcrLoading ? '识别中...' : '点击选择截图（支持多选）'"></p>
+                  </div>
+                  <input type="file" accept="image/*" multiple class="hidden" @change="stockOcrUpload($event)">
+                </label>
+              </div>
+
+              <!-- OCR Results -->
+              <template x-if="stockOcrResults.length > 0">
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <p class="text-xs font-medium text-gray-600">识别结果 (<span x-text="stockOcrResults.filter(r=>r.selected).length"></span>/<span x-text="stockOcrResults.length"></span>)</p>
+                    <div class="flex gap-2">
+                      <button @click="stockOcrResults.forEach(r => r.selected = true)" class="text-xs text-brand-600 hover:text-brand-800">全选</button>
+                      <button @click="stockOcrResults.forEach(r => r.selected = false)" class="text-xs text-gray-400 hover:text-gray-600">取消</button>
+                    </div>
+                  </div>
+                  <div class="max-h-80 overflow-y-auto space-y-2 pr-1">
+                    <template x-for="(item, idx) in stockOcrResults" :key="idx">
+                      <div class="flex items-start gap-2 p-2.5 rounded-lg border transition"
+                        :class="item.price_warning ? 'border-amber-300 bg-amber-50/50' : (item.selected ? 'border-brand-200 bg-brand-50/50' : 'border-gray-100 bg-gray-50/50 opacity-60')">
+                        <input type="checkbox" x-model="item.selected" class="mt-0.5 rounded border-gray-300 text-brand-600 focus:ring-brand-500">
+                        <div class="flex-1 min-w-0">
+                          <div class="flex items-center gap-2 mb-1">
+                            <span class="text-sm font-medium text-gray-900 truncate" x-text="item.stock_name"></span>
+                            <input type="text" x-model="item.stock_code" placeholder="代码"
+                              class="w-20 px-1.5 py-0.5 text-xs font-mono border rounded bg-white focus:ring-1 focus:ring-brand-500 outline-none"
+                              :class="item.price_warning ? 'border-amber-400 bg-amber-50' : (!item.stock_code ? 'border-red-300' : 'border-gray-200')">
+                          </div>
+                          <template x-if="item.matched_name && item.matched_name !== item.stock_name">
+                            <p class="text-[10px] text-gray-400 mb-1 truncate">匹配: <span x-text="item.matched_name"></span></p>
+                          </template>
+                          <template x-if="item.price_warning">
+                            <div class="flex items-start gap-1 mb-1.5 px-2 py-1 rounded bg-amber-100 border border-amber-200">
+                              <svg class="w-3 h-3 text-amber-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+                              <p class="text-[10px] text-amber-700 leading-tight" x-text="item.price_warning"></p>
+                            </div>
+                          </template>
+                          <div class="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[11px] text-gray-500">
+                            <span>市值: <span class="font-medium text-gray-700" x-text="item.market_value?.toLocaleString('zh-CN', {minimumFractionDigits:2, maximumFractionDigits:2})"></span></span>
+                            <span>现价: <span class="font-medium text-gray-700" x-text="item.current_price?.toFixed(3)"></span></span>
+                            <span>成本价: <span class="font-medium text-gray-700" x-text="item.cost_price?.toFixed(4)"></span></span>
+                            <span :class="item.total_profit >= 0 ? 'text-green-600' : 'text-red-500'">
+                              总盈亏: <span class="font-medium" x-text="(item.total_profit >= 0 ? '+' : '') + item.total_profit?.toFixed(2)"></span>
+                              (<span x-text="(item.total_profit_rate >= 0 ? '+' : '') + item.total_profit_rate?.toFixed(2) + '%'"></span>)
+                            </span>
+                            <span :class="item.daily_profit >= 0 ? 'text-green-600' : 'text-red-500'">
+                              当日: <span class="font-medium" x-text="(item.daily_profit >= 0 ? '+' : '') + item.daily_profit?.toFixed(2)"></span>
+                              (<span x-text="(item.daily_profit_rate >= 0 ? '+' : '') + item.daily_profit_rate?.toFixed(2) + '%'"></span>)
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                  <button @click="confirmStockImport()" :disabled="stockOcrLoading"
+                    class="w-full mt-3 py-2.5 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 rounded-lg transition">
+                    <span x-text="stockOcrLoading ? '导入中...' : '确认导入 ' + stockOcrResults.filter(r=>r.selected && r.stock_code).length + ' 只股票'"></span>
+                  </button>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- Manual Entry -->
+          <div x-show="stockImportMode==='manual'" class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sticky top-20">
+            <h3 class="text-base font-semibold text-gray-800 mb-4">添加股票交易</h3>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">股票代码</label>
+                <input type="text" x-model="stockForm.stock_code" placeholder="如 600519"
+                  class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">渠道</label>
+                <select x-model="stockForm.channel_code"
+                  class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                  <template x-for="ch in stockChannelOptions" :key="ch.code">
+                    <option :value="ch.code" x-text="ch.name"></option>
+                  </template>
+                </select>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-500 mb-1">方向</label>
+                  <select x-model="stockForm.txn_type"
+                    class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                    <option value="buy">买入</option>
+                    <option value="sell">卖出</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-500 mb-1">日期</label>
+                  <input type="date" x-model="stockForm.txn_date"
+                    class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                </div>
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-medium text-gray-500 mb-1">价格</label>
+                  <input type="number" step="0.01" x-model="stockForm.price" placeholder="成交价"
+                    class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                </div>
+                <div>
+                  <label class="block text-xs font-medium text-gray-500 mb-1">数量（股）</label>
+                  <input type="number" step="100" x-model="stockForm.shares" placeholder="如 100"
+                    class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">手续费</label>
+                <input type="number" step="0.01" x-model="stockForm.fee" placeholder="0"
+                  class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-500 mb-1">备注</label>
+                <input type="text" x-model="stockForm.note" placeholder="可选"
+                  class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none">
+              </div>
+              <button @click="addStockTransaction()" :disabled="stockAddLoading"
+                class="w-full py-2.5 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 rounded-lg transition">
+                <span x-text="stockAddLoading ? '提交中...' : (stockForm.txn_type === 'buy' ? '确认买入' : '确认卖出')"></span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ========== Analysis Tab ========== -->
     <div x-show="tab === 'analysis'" x-transition>
-      <div x-show="!summary.holdings || !summary.holdings.length" class="bg-white rounded-xl shadow-sm border border-gray-100 py-16 text-center text-gray-400">
+      <div x-show="!allAnalysisHoldings.length" class="bg-white rounded-xl shadow-sm border border-gray-100 py-16 text-center text-gray-400">
         <p>暂无持仓数据，请先导入持仓</p>
       </div>
-      <div x-show="summary.holdings && summary.holdings.length">
+      <div x-show="allAnalysisHoldings.length">
 
         <!-- ───── Section: Key Metrics ───── -->
         <div class="mb-8">
@@ -340,7 +634,7 @@
             </div>
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
               <h3 class="text-xs font-medium text-gray-500 mb-3">收益率排行</h3>
-              <div class="relative" style="min-height: 260px;" :style="'height:' + Math.max(260, (summary.holdings||[]).length * 34) + 'px'">
+              <div class="relative" style="min-height: 260px;" :style="'height:' + Math.max(260, allAnalysisHoldings.length * 34) + 'px'">
                 <canvas id="chartRate"></canvas>
               </div>
             </div>
@@ -348,13 +642,13 @@
           <div class="grid md:grid-cols-2 gap-5">
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
               <h3 class="text-xs font-medium text-gray-500 mb-3">盈亏金额排行</h3>
-              <div class="relative" style="min-height: 260px;" :style="'height:' + Math.max(260, (summary.holdings||[]).length * 34) + 'px'">
+              <div class="relative" style="min-height: 260px;" :style="'height:' + Math.max(260, allAnalysisHoldings.length * 34) + 'px'">
                 <canvas id="chartProfit"></canvas>
               </div>
             </div>
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
               <h3 class="text-xs font-medium text-gray-500 mb-3">成本 vs 市值</h3>
-              <div class="relative" style="min-height: 260px;" :style="'height:' + Math.max(260, (summary.holdings||[]).length * 38) + 'px'">
+              <div class="relative" style="min-height: 260px;" :style="'height:' + Math.max(260, allAnalysisHoldings.length * 38) + 'px'">
                 <canvas id="chartCostMarket"></canvas>
               </div>
             </div>
@@ -696,7 +990,8 @@
       return {
         tab: 'dashboard',
         tabs: [
-          { id: 'dashboard', label: '总览' },
+          { id: 'dashboard', label: '基金总览' },
+          { id: 'stock',     label: '股票管理' },
           { id: 'analysis',  label: '持仓分析' },
           { id: 'import',    label: '截图导入' },
           { id: 'add',       label: '手动录入' },
@@ -738,6 +1033,28 @@
         syncAllLoading: false,
         syncAllProgress: '',
 
+        // Stock
+        stockSummary: { holdings: [], stock_count: 0, total_cost: 0, total_market_value: 0, total_profit: 0, total_profit_rate: 0 },
+        stockSortKey: 'market_value',
+        stockSortAsc: false,
+        stockForm: { stock_code: '', channel_code: 'pingan', txn_type: 'buy', txn_date: new Date().toISOString().slice(0,10), price: '', shares: '', fee: '0', note: '' },
+        stockAddLoading: false,
+        stockSyncAllLoading: false,
+        stockChannelOptions: [
+          { code: 'pingan', name: '平安证券' },
+          { code: 'eastmoney', name: '东方财富' },
+          { code: 'huatai', name: '华泰证券' },
+          { code: 'alipay', name: '支付宝' },
+          { code: 'jd', name: '京东金融' },
+          { code: 'wechat', name: '微信理财通' },
+          { code: 'other', name: '其他券商' },
+        ],
+        stockOcrResults: [],
+        stockOcrLoading: false,
+        stockOcrChannel: 'pingan',
+        stockOcrDate: new Date().toISOString().slice(0,10),
+        stockImportMode: 'manual',
+
         // Charts & industry sync
         _charts: {},
         syncIndustryLoading: false,
@@ -752,12 +1069,14 @@
 
         init() {
           this.loadSummary();
+          this.loadStockSummary();
         },
 
         switchTab(t) {
           this.tab = t;
           if (t === 'dashboard') this.loadSummary();
-          if (t === 'analysis') { this.loadSummary(); this.$nextTick(() => this.renderCharts()); }
+          if (t === 'stock') this.loadStockSummary();
+          if (t === 'analysis') { this.loadSummary(); this.loadStockSummary(); this.$nextTick(() => this.renderCharts()); }
           if (t === 'history') this.loadTransactions();
         },
 
@@ -795,9 +1114,18 @@
           };
         },
 
-        // ---- Analysis metrics ----
+        // ---- Analysis: merge fund + stock ----
+        get allAnalysisHoldings() {
+          const funds = (this.summary.holdings || []).map(h => ({ ...h, asset_type: 'fund', display_name: h.fund_name }));
+          const stocks = (this.stockSummary.holdings || []).map(h => ({
+            ...h, asset_type: 'stock', display_name: h.stock_name,
+            fund_name: h.stock_name, fund_code: h.stock_code,
+          }));
+          return [...funds, ...stocks];
+        },
+
         get analysisMetrics() {
-          const h = this.summary.holdings || [];
+          const h = this.allAnalysisHoldings;
           if (!h.length) return {};
           const byMv = [...h].sort((a, b) => (b.market_value || 0) - (a.market_value || 0));
           const byRate = [...h].filter(x => x.profit_rate != null).sort((a, b) => b.profit_rate - a.profit_rate);
@@ -826,6 +1154,165 @@
             ...s,
             rate: s.cost > 0 ? s.profit / s.cost * 100 : 0,
           })).sort((a, b) => b.market - a.market);
+        },
+
+        // ---- Stock ----
+        async loadStockSummary() {
+          try {
+            const res = await fetch('/api/stock/summary');
+            this.stockSummary = await res.json();
+          } catch {}
+        },
+
+        get sortedStockHoldings() {
+          if (!this.stockSummary.holdings) return [];
+          return [...this.stockSummary.holdings].sort((a, b) => {
+            const av = a[this.stockSortKey] ?? '';
+            const bv = b[this.stockSortKey] ?? '';
+            let cmp;
+            if (typeof av === 'string' || typeof bv === 'string') {
+              cmp = String(av).localeCompare(String(bv), 'zh-CN');
+            } else {
+              cmp = (av || 0) - (bv || 0);
+            }
+            return this.stockSortAsc ? cmp : -cmp;
+          });
+        },
+
+        toggleStockSort(key) {
+          if (this.stockSortKey === key) { this.stockSortAsc = !this.stockSortAsc; }
+          else { this.stockSortKey = key; this.stockSortAsc = false; }
+        },
+
+        async addStockTransaction() {
+          const f = this.stockForm;
+          if (!f.stock_code || !f.price || !f.shares) {
+            this.showToast('请填写完整信息', 'error');
+            return;
+          }
+          this.stockAddLoading = true;
+          try {
+            const body = new FormData();
+            for (const [k, v] of Object.entries(f)) body.append(k, v);
+            const res = await fetch('/api/stock/transaction', { method: 'POST', body });
+            const data = await res.json();
+            if (data.success) {
+              this.showToast('交易添加成功', 'success');
+              this.stockForm = { ...this.stockForm, stock_code: '', price: '', shares: '', fee: '0', note: '' };
+              this.loadStockSummary();
+            } else {
+              this.showToast(data.error || '添加失败', 'error');
+            }
+          } catch { this.showToast('请求失败', 'error'); }
+          finally { this.stockAddLoading = false; }
+        },
+
+        async syncStockPrice(code) {
+          try {
+            const res = await fetch(`/api/stock/${code}/sync`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) this.showToast(`已同步 ${data.count} 条行情`, 'success');
+          } catch { this.showToast('同步失败', 'error'); }
+          this.loadStockSummary();
+        },
+
+        async syncAllStockPrices() {
+          if (!this.stockSummary.holdings?.length) return;
+          this.stockSyncAllLoading = true;
+          for (const h of this.stockSummary.holdings) {
+            await fetch(`/api/stock/${h.stock_code}/sync`, { method: 'POST' });
+          }
+          this.stockSyncAllLoading = false;
+          this.showToast('全部行情同步完成', 'success');
+          this.loadStockSummary();
+        },
+
+        async saveStockCode(h) {
+          const newCode = (h._newCode || '').trim();
+          if (!newCode) { this.showToast('代码不能为空', 'error'); return; }
+          if (newCode === h.stock_code) { h._editing = false; return; }
+          try {
+            const res = await fetch(`/api/stock/holdings/${h.holding_id}/code`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ new_code: newCode })
+            });
+            const data = await res.json();
+            if (data.success) {
+              const priceInfo = data.latest_price ? `，最新价 ${data.latest_price.toFixed(2)}` : '';
+              const mvInfo = data.market_value ? `，市值 ${data.market_value.toFixed(2)}` : '';
+              this.showToast(`代码已更新为 ${newCode}（${data.stock_name || ''}${priceInfo}${mvInfo}）`, 'success');
+              h._editing = false;
+              await this.loadStockSummary();
+            } else {
+              this.showToast(data.error || '更新失败', 'error');
+            }
+          } catch { this.showToast('请求失败', 'error'); }
+        },
+
+        async deleteStockHolding(id) {
+          if (!confirm('确认删除该持仓？')) return;
+          await fetch(`/api/stock/holdings/${id}`, { method: 'DELETE' });
+          this.loadStockSummary();
+        },
+
+        async clearAllStockHoldings() {
+          if (!confirm(`确认清空全部 ${this.stockSummary.holdings.length} 条股票持仓？此操作不可恢复。`)) return;
+          try {
+            for (const h of this.stockSummary.holdings) {
+              await fetch(`/api/stock/holdings/${h.holding_id}`, { method: 'DELETE' });
+            }
+            this.showToast('已清空全部股票持仓', 'success');
+            this.loadStockSummary();
+          } catch { this.showToast('清空失败', 'error'); }
+        },
+
+        async stockOcrUpload(event) {
+          const files = event.target.files;
+          if (!files || !files.length) return;
+          this.stockOcrLoading = true;
+          this.stockOcrResults = [];
+          try {
+            const fd = new FormData();
+            for (const f of files) fd.append('files', f);
+            const res = await fetch('/api/stock/ocr/parse', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (data.results) {
+              this.stockOcrResults = data.results.map(r => ({ ...r, selected: true }));
+              this.showToast(`识别到 ${data.results.length} 只股票`, 'success');
+            } else {
+              this.showToast(data.error || '识别失败', 'error');
+            }
+          } catch { this.showToast('上传失败', 'error'); }
+          finally { this.stockOcrLoading = false; }
+          event.target.value = '';
+        },
+
+        async confirmStockImport() {
+          const selected = this.stockOcrResults.filter(r => r.selected && r.stock_code);
+          if (!selected.length) { this.showToast('没有选中可导入的股票', 'error'); return; }
+          if (!this.stockOcrDate) { this.showToast('请选择截图日期', 'error'); return; }
+          this.stockOcrLoading = true;
+          try {
+            const res = await fetch('/api/stock/import/snapshot', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                stocks: selected,
+                snapshot_date: this.stockOcrDate,
+                channel_code: this.stockOcrChannel,
+              })
+            });
+            const data = await res.json();
+            if (data.success) {
+              this.showToast(`成功导入 ${data.imported} 只股票`, 'success');
+              this.stockOcrResults = [];
+              this.loadStockSummary();
+            } else {
+              this.showToast(data.error || '导入失败', 'error');
+            }
+          } catch { this.showToast('请求失败', 'error'); }
+          finally { this.stockOcrLoading = false; }
         },
 
         get renderedAiResult() {
@@ -1117,7 +1604,7 @@
 
         // ---- Charts ----
         renderCharts() {
-          const holdings = this.summary.holdings || [];
+          const holdings = this.allAnalysisHoldings;
           if (!holdings.length) return;
 
           const COLORS = [

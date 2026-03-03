@@ -8,28 +8,30 @@ from __future__ import annotations
 import yaml
 from openai import OpenAI
 
-_SYSTEM_PROMPT = """你是一位专业的基金投资顾问，擅长分析个人基金持仓组合。
+_SYSTEM_PROMPT = """你是一位专业的投资顾问，擅长分析个人投资组合（包括基金和股票）。
 请根据用户提供的持仓数据，从以下维度进行分析并给出专业建议：
 
-1. **持仓风格画像**：根据持有基金的类型和行业分布，判断整体投资风格（激进/稳健/保守/均衡），并说明理由。
+1. **持仓风格画像**：根据持有资产的类型和行业分布，判断整体投资风格（激进/稳健/保守/均衡），并说明理由。
 
 2. **资产配置分析**：
-   - 股债配比是否合理
+   - 基金与股票的配比是否合理
+   - 股债配比是否合理（基金部分）
    - 行业集中度如何，是否存在过度集中风险
    - 各行业/类型的资金分布是否均衡
 
 3. **持仓诊断**：
-   - 指出收益表现好的和表现差的持仓
-   - 分析可能存在的风险点（如同质化持仓、追涨杀跌等）
+   - 指出收益表现好的和表现差的持仓（区分基金和股票）
+   - 分析可能存在的风险点（如同质化持仓、个股集中、追涨杀跌等）
 
 4. **调仓建议**：
    - 哪些行业可以适当增配或减配
+   - 基金和股票之间的配比建议
    - 当前缺失哪些重要配置（如有）
    - 给出具体的调整方向和理由
 
 要求：
 - 使用中文回答
-- 分析要结合实际数据，引用具体基金名称和数字
+- 分析要结合实际数据，引用具体基金/股票名称和数字
 - 建议要具体可操作，不要空泛
 - 使用 Markdown 格式输出，用标题和列表让内容结构清晰
 - 最后给一个 1-10 分的综合评分和一句话总结"""
@@ -53,31 +55,56 @@ def build_portfolio_prompt(holdings: list[dict]) -> str:
     total_market = sum(h.get("market_value", 0) or 0 for h in holdings)
     total_profit = total_market - total_cost
 
+    fund_list = [h for h in holdings if h.get("asset_type") != "stock"]
+    stock_list = [h for h in holdings if h.get("asset_type") == "stock"]
+
     lines = [
         f"## 持仓概览",
-        f"- 持有基金数量：{len(holdings)} 只",
+        f"- 持有基金：{len(fund_list)} 只，股票：{len(stock_list)} 只",
         f"- 总投入成本：{total_cost:,.2f} 元",
         f"- 当前总市值：{total_market:,.2f} 元",
         f"- 总盈亏：{total_profit:+,.2f} 元（{total_profit / total_cost * 100:+.2f}%）" if total_cost > 0 else "",
         "",
-        "## 持仓明细",
-        "",
-        "| 基金名称 | 行业 | 成本 | 市值 | 盈亏 | 收益率 | 占比 |",
-        "|---------|------|------|------|------|--------|------|",
     ]
 
-    sorted_h = sorted(holdings, key=lambda x: x.get("market_value", 0) or 0, reverse=True)
-    for h in sorted_h:
-        name = h.get("fund_name", "")
-        industry = h.get("industry", "其他")
-        cost = h.get("cost_amount", 0) or 0
-        mv = h.get("market_value", 0) or 0
-        profit = h.get("profit", 0) or 0
-        rate = h.get("profit_rate", 0) or 0
-        pct = mv / total_market * 100 if total_market > 0 else 0
-        lines.append(
-            f"| {name} | {industry} | {cost:,.2f} | {mv:,.2f} | {profit:+,.2f} | {rate:+.2f}% | {pct:.1f}% |"
-        )
+    if fund_list:
+        lines += [
+            "## 基金持仓明细",
+            "",
+            "| 基金名称 | 行业 | 成本 | 市值 | 盈亏 | 收益率 | 占比 |",
+            "|---------|------|------|------|------|--------|------|",
+        ]
+        for h in sorted(fund_list, key=lambda x: x.get("market_value", 0) or 0, reverse=True):
+            name = h.get("fund_name", "")
+            industry = h.get("industry", "其他")
+            cost = h.get("cost_amount", 0) or 0
+            mv = h.get("market_value", 0) or 0
+            profit = h.get("profit", 0) or 0
+            rate = h.get("profit_rate", 0) or 0
+            pct = mv / total_market * 100 if total_market > 0 else 0
+            lines.append(
+                f"| {name} | {industry} | {cost:,.2f} | {mv:,.2f} | {profit:+,.2f} | {rate:+.2f}% | {pct:.1f}% |"
+            )
+
+    if stock_list:
+        lines += [
+            "",
+            "## 股票持仓明细",
+            "",
+            "| 股票名称 | 行业 | 成本 | 市值 | 盈亏 | 收益率 | 占比 |",
+            "|---------|------|------|------|------|--------|------|",
+        ]
+        for h in sorted(stock_list, key=lambda x: x.get("market_value", 0) or 0, reverse=True):
+            name = h.get("stock_name", "")
+            industry = h.get("industry", "其他")
+            cost = h.get("cost_amount", 0) or 0
+            mv = h.get("market_value", 0) or 0
+            profit = h.get("profit", 0) or 0
+            rate = h.get("profit_rate", 0) or 0
+            pct = mv / total_market * 100 if total_market > 0 else 0
+            lines.append(
+                f"| {name} | {industry} | {cost:,.2f} | {mv:,.2f} | {profit:+,.2f} | {rate:+.2f}% | {pct:.1f}% |"
+            )
 
     # 行业汇总
     ind_map: dict[str, dict] = {}

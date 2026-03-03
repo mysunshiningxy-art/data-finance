@@ -6,7 +6,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File, Form, Request
+from fastapi import FastAPI, UploadFile, File, Form, Request, Body
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -86,15 +86,18 @@ def api_summary():
 
 @app.post("/api/ai/analyze")
 def api_ai_analyze():
-    """AI 智能持仓分析"""
+    """AI 智能持仓分析（基金+股票）"""
     from src.services.ai_analysis import analyze_portfolio
     session = get_session()
     try:
-        s = get_portfolio_summary(session)
-        holdings = [_holding_to_dict(h) for h in s["holdings"]]
-        if not holdings:
+        fund_s = get_portfolio_summary(session)
+        fund_holdings = [_holding_to_dict(h) for h in fund_s["holdings"]]
+        stock_s = get_stock_summary(session)
+        stock_holdings = [{**_stock_holding_to_dict(h), "asset_type": "stock"} for h in stock_s["holdings"]]
+        all_holdings = [{**h, "asset_type": "fund"} for h in fund_holdings] + stock_holdings
+        if not all_holdings:
             return JSONResponse(status_code=400, content={"error": "暂无持仓数据"})
-        result = analyze_portfolio(holdings)
+        result = analyze_portfolio(all_holdings)
         return {"success": True, "content": result}
     except ValueError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
@@ -223,6 +226,372 @@ def api_sync_industries():
         count = sync_fund_industries(session)
         return {"success": True, "count": count}
     except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
+# API — Stock
+# ---------------------------------------------------------------------------
+
+from src.services.stock import (
+    fetch_stock_info as _fetch_stock_info,
+    ensure_stock_exists, sync_stock_price,
+    get_stock_holdings, get_stock_summary,
+    add_stock_transaction, StockHoldingSummary,
+    ensure_channel as ensure_stock_channel,
+    get_latest_price, get_latest_price_with_date as get_stock_price_with_date,
+)
+from src.models import StockHolding, StockTransaction
+
+
+def _stock_holding_to_dict(h: StockHoldingSummary) -> dict:
+    return {
+        "holding_id": h.holding_id,
+        "stock_code": h.stock_code,
+        "stock_name": h.stock_name,
+        "market": h.market,
+        "channel_name": h.channel_name,
+        "industry": h.industry,
+        "shares": float(h.shares),
+        "cost_amount": float(h.cost_amount),
+        "cost_price": float(h.cost_price) if h.cost_price else None,
+        "latest_price": float(h.latest_price) if h.latest_price else None,
+        "latest_price_date": h.latest_price_date,
+        "market_value": float(h.market_value) if h.market_value else None,
+        "profit": float(h.profit) if h.profit is not None else None,
+        "profit_rate": float(h.profit_rate) if h.profit_rate is not None else None,
+    }
+
+
+@app.get("/api/stock/summary")
+def api_stock_summary():
+    session = get_session()
+    try:
+        s = get_stock_summary(session)
+        return {
+            "stock_count": s["stock_count"],
+            "total_cost": float(s["total_cost"]),
+            "total_market_value": float(s["total_market_value"]),
+            "total_profit": float(s["total_profit"]) if s["total_profit"] else 0,
+            "total_profit_rate": float(s["total_profit_rate"]) if s["total_profit_rate"] else 0,
+            "holdings": [_stock_holding_to_dict(h) for h in s["holdings"]],
+        }
+    finally:
+        session.close()
+
+
+@app.get("/api/stock/{code}/info")
+def api_stock_info(code: str):
+    info = _fetch_stock_info(code)
+    return info or JSONResponse(status_code=404, content={"error": "股票未找到"})
+
+
+@app.post("/api/stock/{code}/sync")
+def api_sync_stock_price(code: str):
+    session = get_session()
+    try:
+        ensure_stock_exists(session, code)
+        count = sync_stock_price(session, code)
+        return {"success": True, "count": count}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    finally:
+        session.close()
+
+
+@app.post("/api/stock/transaction")
+def api_add_stock_transaction(
+    stock_code: str = Form(...),
+    channel_code: str = Form("other"),
+    txn_type: str = Form("buy"),
+    txn_date: str = Form(...),
+    price: str = Form(...),
+    shares: str = Form(...),
+    fee: str = Form("0"),
+    note: str = Form(""),
+):
+    channel_map = {
+        "alipay": "支付宝", "jd": "京东金融", "wechat": "微信理财通",
+        "eastmoney": "东方财富", "huatai": "华泰证券", "other": "其他券商",
+    }
+    session = get_session()
+    try:
+        txn = add_stock_transaction(
+            session,
+            stock_code=stock_code,
+            channel_code=channel_code,
+            channel_name=channel_map.get(channel_code, channel_code),
+            txn_type=txn_type,
+            txn_date=datetime.strptime(txn_date, "%Y-%m-%d").date(),
+            price=Decimal(price),
+            shares=Decimal(shares),
+            fee=Decimal(fee),
+            note=note,
+        )
+        return {"success": True, "id": txn.id}
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    finally:
+        session.close()
+
+
+@app.put("/api/stock/holdings/{holding_id}/code")
+def api_update_stock_code(holding_id: int, body: dict = Body(...)):
+    """修改持仓的股票代码"""
+    new_code = body.get("new_code", "").strip()
+    if not new_code:
+        return JSONResponse(status_code=400, content={"error": "代码不能为空"})
+    session = get_session()
+    try:
+        h = session.get(StockHolding, holding_id)
+        if not h:
+            return JSONResponse(status_code=404, content={"error": "持仓不存在"})
+
+        old_code = h.stock_code
+        if old_code == new_code:
+            return {"success": True}
+
+        # Ensure new stock exists
+        stock = ensure_stock_exists(session, new_code)
+
+        # Update holding and related transactions
+        h.stock_code = new_code
+        session.query(StockTransaction).filter_by(
+            stock_code=old_code, channel_id=h.channel_id
+        ).update({"stock_code": new_code})
+
+        # Sync price history for the new code
+        from datetime import timedelta
+        from src.models import StockPrice as SP
+        sync_stock_price(session, new_code,
+                         start_date=date.today() - timedelta(days=60),
+                         end_date=date.today())
+
+        # Get latest price; fallback: copy old code's price if sync failed
+        latest_price, price_date = get_stock_price_with_date(session, new_code)
+        if not latest_price:
+            old_price_rec = (
+                session.query(SP).filter_by(stock_code=old_code)
+                .order_by(SP.price_date.desc()).first()
+            )
+            if old_price_rec:
+                existing = session.query(SP).filter_by(
+                    stock_code=new_code, price_date=old_price_rec.price_date).first()
+                if not existing:
+                    session.add(SP(stock_code=new_code,
+                                   price_date=old_price_rec.price_date,
+                                   close=old_price_rec.close))
+                    session.flush()
+                latest_price = old_price_rec.close
+                price_date = old_price_rec.price_date
+        market_value = None
+        profit = None
+        profit_rate = None
+        if latest_price and latest_price > 0:
+            market_value = float((h.shares * latest_price).quantize(Decimal("0.01")))
+            profit = float((Decimal(str(market_value)) - h.cost_amount).quantize(Decimal("0.01")))
+            if h.cost_amount > 0:
+                profit_rate = float(((Decimal(str(profit)) / h.cost_amount) * 100).quantize(Decimal("0.01")))
+
+        session.commit()
+        return {
+            "success": True,
+            "stock_name": stock.name,
+            "latest_price": float(latest_price) if latest_price else None,
+            "price_date": price_date.isoformat() if price_date else None,
+            "market_value": market_value,
+            "profit": profit,
+            "profit_rate": profit_rate,
+        }
+    except Exception as e:
+        session.rollback()
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    finally:
+        session.close()
+
+
+@app.delete("/api/stock/holdings/{holding_id}")
+def api_delete_stock_holding(holding_id: int):
+    session = get_session()
+    try:
+        h = session.get(StockHolding, holding_id)
+        if not h:
+            return JSONResponse(status_code=404, content={"error": "持仓不存在"})
+        session.delete(h)
+        session.commit()
+        return {"success": True}
+    finally:
+        session.close()
+
+
+@app.get("/api/stock/transactions")
+def api_stock_transactions(code: str | None = None, limit: int = 50):
+    session = get_session()
+    try:
+        query = session.query(StockTransaction).order_by(StockTransaction.txn_date.desc())
+        if code:
+            query = query.filter_by(stock_code=code)
+        txns = query.limit(limit).all()
+        return [{
+            "id": t.id,
+            "stock_code": t.stock_code,
+            "stock_name": t.stock.name if t.stock else t.stock_code,
+            "channel_name": t.channel.name if t.channel else "",
+            "txn_type": t.txn_type,
+            "txn_date": t.txn_date.isoformat(),
+            "price": float(t.price),
+            "shares": float(t.shares),
+            "amount": float(t.amount),
+            "fee": float(t.fee),
+            "note": t.note or "",
+        } for t in txns]
+    finally:
+        session.close()
+
+
+@app.post("/api/stock/ocr/parse")
+async def api_stock_ocr_parse(files: list[UploadFile] = File(...)):
+    """股票持仓截图 OCR 解析"""
+    from src.ocr.stock_parser import parse_screenshot, search_stock_code, OCR_AVAILABLE
+    from PIL import Image as PILImage
+    if not OCR_AVAILABLE:
+        return JSONResponse(status_code=400, content={"error": "OCR 依赖未安装"})
+
+    all_results = []
+    for f in files:
+        data = await f.read()
+        img = PILImage.open(io.BytesIO(data))
+        parsed = parse_screenshot(img)
+        for p in parsed:
+            code_info = None
+            try:
+                code_info = search_stock_code(p.stock_name)
+            except Exception:
+                pass
+
+            matched_name = code_info["name"] if code_info else ""
+            matched_code = code_info["code"] if code_info else ""
+
+            # Price verification: check if matched code's latest price is close
+            price_warning = ""
+            if matched_code and p.current_price > 0:
+                session = get_session()
+                try:
+                    from datetime import timedelta as _td
+                    sync_stock_price(session, matched_code,
+                                     start_date=date.today() - _td(days=5),
+                                     end_date=date.today())
+                    db_price = get_latest_price(session, matched_code)
+                    if db_price and db_price > 0:
+                        diff_pct = abs(float(db_price) - p.current_price) / p.current_price * 100
+                        if diff_pct > 10:
+                            price_warning = f"价格偏差 {diff_pct:.0f}%（匹配到 {matched_name}，行情价 {db_price}，截图价 {p.current_price:.3f}）"
+                except Exception:
+                    pass
+                finally:
+                    session.close()
+
+            all_results.append({
+                "stock_name": p.stock_name,
+                "stock_code": matched_code,
+                "matched_name": matched_name,
+                "market_value": p.market_value,
+                "current_price": p.current_price,
+                "cost_price": p.cost_price,
+                "total_profit": p.total_profit,
+                "total_profit_rate": p.total_profit_rate,
+                "daily_profit": p.daily_profit,
+                "daily_profit_rate": p.daily_profit_rate,
+                "price_warning": price_warning,
+            })
+    return {"results": all_results}
+
+
+@app.post("/api/stock/import/snapshot")
+def api_stock_import_snapshot(request_body: dict = Body(...)):
+    """确认导入股票截图识别结果"""
+    from datetime import timedelta
+    body = request_body or {}
+    stocks = body.get("stocks", [])
+    snapshot_date_str = body.get("snapshot_date", "")
+    channel_code = body.get("channel_code", "pingan")
+    channel_name_map = {
+        "pingan": "平安证券", "eastmoney": "东方财富",
+        "huatai": "华泰证券", "other": "其他券商",
+    }
+
+    if not stocks or not snapshot_date_str:
+        return JSONResponse(status_code=400, content={"error": "缺少数据"})
+
+    snapshot_date = datetime.strptime(snapshot_date_str, "%Y-%m-%d").date()
+    session = get_session()
+    try:
+        channel = ensure_stock_channel(session, channel_code, channel_name_map.get(channel_code, channel_code))
+        imported = 0
+
+        for s in stocks:
+            code = s.get("stock_code", "").strip()
+            name = s.get("stock_name", "")
+            market_value = abs(Decimal(str(s.get("market_value", 0))))
+            cost_price = Decimal(str(s.get("cost_price", 0)))
+
+            if not code or market_value <= 0:
+                continue
+
+            stock = ensure_stock_exists(session, code, name)
+
+            # Always use screenshot current_price for share calculation
+            # (market_value = shares × current_price at snapshot time)
+            current_price = abs(Decimal(str(s.get("current_price", 0))))
+            if current_price <= 0:
+                current_price = Decimal(1)
+            shares = (market_value / current_price).quantize(Decimal("1"))
+
+            # Sync latest price for display; fallback to screenshot price
+            sync_stock_price(session, code, start_date=snapshot_date - timedelta(days=5), end_date=snapshot_date)
+            db_price, _ = get_stock_price_with_date(session, code)
+            if not db_price or db_price <= 0:
+                from src.models import StockPrice as SP
+                existing = session.query(SP).filter_by(stock_code=code, price_date=snapshot_date).first()
+                if not existing:
+                    session.add(SP(stock_code=code, price_date=snapshot_date, close=current_price))
+                    session.flush()
+
+            holding = (
+                session.query(StockHolding)
+                .filter_by(stock_code=code, channel_id=channel.id)
+                .first()
+            )
+            if not holding:
+                holding = StockHolding(stock_code=code, channel_id=channel.id)
+                session.add(holding)
+                session.flush()
+
+            holding.shares = shares
+            holding.cost_amount = (shares * cost_price).quantize(Decimal("0.01"))
+            holding.cost_price = cost_price
+
+            txn = StockTransaction(
+                stock_code=code,
+                channel_id=channel.id,
+                txn_type="buy",
+                txn_date=snapshot_date,
+                price=price,
+                shares=shares,
+                amount=market_value,
+                fee=Decimal(0),
+                status="confirmed",
+                note=f"截图导入 {snapshot_date_str}",
+            )
+            session.add(txn)
+            imported += 1
+
+        session.commit()
+        return {"success": True, "imported": imported}
+    except Exception as e:
+        session.rollback()
         return JSONResponse(status_code=400, content={"error": str(e)})
     finally:
         session.close()
